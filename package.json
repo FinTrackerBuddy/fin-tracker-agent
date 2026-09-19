@@ -1,0 +1,31 @@
+{
+  "name": "personal-finance-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A personal finance assistant.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test $(find dist -name '*.test.js' -print)",
+    "start": "npm run build && node --env-file-if-exists=.env dist/main.js",
+    "test:api": "npm run build && node --test dist/http/finance-api-server.test.js",
+    "test:llm": "npm run build && node --test dist/llm/llm-service.test.js",
+    "test:finance-agent": "npm run build && node --test dist/agent/date-context.test.js dist/agent/finance-agent.test.js",
+    "test:expenses": "npm run build && node --test dist/tools/get-expenses.test.js dist/tools/compare-spending-periods.test.js dist/tools/analyze-expenses.test.js",
+    "test:google-oauth": "npm run build && node --test dist/google-sheets/local-oauth.test.js dist/google-sheets/oauth-token-store.test.js dist/google-sheets/google-auth.test.js",
+    "test:google-sheets": "npm run build && node --test dist/google-sheets/config.test.js dist/google-sheets/sheets-api.test.js dist/google-sheets/ledger-reader.test.js dist/google-sheets/expense-data-source.test.js dist/google-sheets/expense-category-vocabulary.test.js",
+    "llm:example": "node --env-file-if-exists=.env dist/examples/llm-example.js",
+    "finance-agent:example": "node --env-file-if-exists=.env dist/examples/finance-agent-example.js",
+    "google-auth": "npm run build && node dist/google-sheets/google-auth.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@langchain/google": "^0.2.6",
+    "@langchain/openai": "^1.5.13",
+    "zod": "^4.6.5"
+  }
+}

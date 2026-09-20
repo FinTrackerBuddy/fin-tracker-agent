@@ -48,6 +48,27 @@ test("returns a stable user-facing response without a tool call", async () => {
   });
 });
 
+test("supplies bounded session history before the current follow-up", async () => {
+  const calls: BaseMessage[][] = [];
+  const agent = new FinanceAgent({
+    async sendMessagesWithTools(messages): Promise<AIMessage> {
+      calls.push(messages);
+      return new AIMessage("The same category was ₹750 in September.");
+    },
+  }, undefined, undefined, expenseCategoryVocabulary);
+
+  await agent.respond("How much was it in September?", "query-id", [{
+    query: "How much did I spend on groceries in August?",
+    response: "You spent ₹500 on groceries in August.",
+  }]);
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.length, 4);
+  assert.equal(calls[0]?.[1]?.content.toString(), "How much did I spend on groceries in August?");
+  assert.equal(calls[0]?.[2]?.content.toString(), "You spent ₹500 on groceries in August.");
+  assert.equal(calls[0]?.[3]?.content.toString(), "How much was it in September?");
+});
+
 test("executes getExpenses and uses its result to produce the final response", async () => {
   const calls: BaseMessage[][] = [];
   const toolsProvided: StructuredToolInterface[][] = [];

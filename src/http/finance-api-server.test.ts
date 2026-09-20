@@ -87,6 +87,48 @@ test("POST /api/query returns the FinanceAgent response as JSON after authentica
   assert.deepEqual(queries, ["How much did I spend on dining out this month?"]);
 });
 
+test("POST /api/query carries bounded relevant context within a caller-provided conversationId", async () => {
+  const histories: Array<readonly { query: string; response: string }[] | undefined> = [];
+  await withServer({
+    async respond(query, _queryId, conversationHistory) {
+      histories.push(conversationHistory);
+      return { text: query === "How much was it in September?"
+        ? "Groceries were ₹750 in September."
+        : "Groceries were ₹500 in August." };
+    },
+  }, async (baseUrl) => {
+    for (const query of ["How much did I spend on groceries in August?", "How much was it in September?"]) {
+      const response = await fetch(`${baseUrl}/api/query`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authorizationHeader },
+        body: JSON.stringify({ query, conversationId: "budget-review-2026" }),
+      });
+      assert.equal(response.status, 200);
+    }
+  });
+
+  assert.deepEqual(histories, [
+    [],
+    [{ query: "How much did I spend on groceries in August?", response: "Groceries were ₹500 in August." }],
+  ]);
+});
+
+test("POST /api/query rejects an invalid conversationId without agent execution", async () => {
+  let invoked = false;
+  await withServer({ async respond() { invoked = true; return { text: "unused" }; } }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/query`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authorizationHeader },
+      body: JSON.stringify({ query: "How much did I spend?", conversationId: "not valid" }),
+    });
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), {
+      error: "conversationId must be a 1-128 character identifier containing only letters, numbers, hyphens, or underscores.",
+    });
+  });
+  assert.equal(invoked, false);
+});
+
 test("POST /api/query logs authentication and request lifecycle events without logging headers", async () => {
   const logger = new RecordedLogger();
   let agentQueryId: string | undefined;

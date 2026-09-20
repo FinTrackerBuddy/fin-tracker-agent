@@ -1,6 +1,7 @@
 import type { ToolCapableLlm } from "../llm/llm-service.js";
 import { randomUUID } from "node:crypto";
 import {
+  AIMessage,
   HumanMessage,
   SystemMessage,
   ToolMessage,
@@ -29,6 +30,7 @@ import {
   systemClock,
   type Clock,
 } from "./date-context.js";
+import type { ConversationTurn } from "../conversation/session-conversation-memory.js";
 
 export interface FinanceAgentResponse {
   text: string;
@@ -57,7 +59,11 @@ export class FinanceAgent {
     this.configuredExpenseAnalysisTool = expenseAnalysisTool;
   }
 
-  public async respond(userMessage: string, queryId: string = randomUUID()): Promise<FinanceAgentResponse> {
+  public async respond(
+    userMessage: string,
+    queryId: string = randomUUID(),
+    conversationHistory: readonly ConversationTurn[] = [],
+  ): Promise<FinanceAgentResponse> {
     const logger = withLogDetails(this.logger, { queryId });
     const expenseTool: StructuredToolInterface = this.configuredExpenseTool
       ?? createGetExpensesTool(undefined, logger);
@@ -79,6 +85,10 @@ export class FinanceAgent {
           + knownCategories.map((category) => `- ${category}`).join("\n")
           + "\n\nWhen a user asks about a broad spending concept, select one or more relevant existing categories from this vocabulary. Never invent a category. Use literal workbook labels in tool categories. If the user's wording exactly matches a category, prefer it. Include multiple categories only when they are directly relevant; do not include loosely associated categories.\n\nCash is a payment-method/account filter, not an expense category. For requests about cash spending, use paymentMethod: 'cash'. This includes owner-prefixed cash accounts such as Pratheek Cash and Arya Cash; never reject a cash request because 'Cash' is absent from the expense-category list.\n\nUse analyzeExpenses for any grouped, ranked, top-N, weekday, category, account, monthly progression, or aggregated spending question. It accepts only a closed data specification: filters; groupBy month, dayOfWeek, category, or account; aggregation sum or count; a matching total/count sort; and optional limit. Put literal category labels in filter.categories. The tool performs all filtering, grouping, aggregation, sorting, and calculations—never derive those values from getExpenses rows yourself. Use getExpenses only for transaction-level detail. Use compareSpendingPeriods for explicitly ordered period totals, comparisons, increases/decreases, differences, or percentages. For category-filtered period comparison, call compareSpendingPeriods once with categories and requested periods; it deterministically returns filtered totals and sequential comparisons. Never call an unfiltered comparison after a category-filtered request. Preserve the user's requested period order; for a sequence of months compare adjacent calendar transitions only (for example August → September → October), never every pair. The date context above resolves relative terms such as last month and this month.",
       ),
+      ...conversationHistory.flatMap((turn) => [
+        new HumanMessage(turn.query),
+        new AIMessage(turn.response),
+      ]),
       new HumanMessage(userMessage),
     ];
 

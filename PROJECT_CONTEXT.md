@@ -29,7 +29,7 @@ ExpenseDataSource
 Google Sheets monthly ledger
 ```
 
-`FinanceAgent` supplies date/category context, selects and executes tools, and turns structured results into a natural-language answer. The provider layer owns LangChain OpenAI/Gemini construction. Tools own deterministic validation, retrieval, and financial calculation; they do not construct LLM prompts. Google OAuth, Sheets API access, ledger parsing, and expense normalization are isolated under `src/google-sheets/`.
+`FinanceAgent` supplies date/category context plus bounded relevant session turns, selects and executes tools, and turns structured results into a natural-language answer. The provider layer owns LangChain OpenAI/Gemini construction. Tools own deterministic validation, retrieval, and financial calculation; they do not construct LLM prompts. Google OAuth, Sheets API access, ledger parsing, and expense normalization are isolated under `src/google-sheets/`.
 
 ## 4. Repository structure
 
@@ -96,6 +96,12 @@ Content-Type: application/json
 { "query": "Compare my spending between August and September." }
 ```
 
+For same-process follow-ups, callers may add a client-generated `conversationId` and reuse it:
+
+```json
+{ "query": "How much was it in September?", "conversationId": "budget-review-2026" }
+```
+
 Successful responses retain the stable shape:
 
 ```json
@@ -142,7 +148,7 @@ Completed: ordered category-aware period comparison and the generic composable `
 
 Three separate concerns are planned:
 
-1. **Phase 3A — Session-level conversation memory**: bounded prior-turn context inside one conversation so follow-ups can resolve references such as “what about September?” It is not permanent storage of every message.
+1. **Phase 3A — Session-level conversation memory — COMPLETE**: an optional API `conversationId` selects capped process-local context for reference-like follow-ups such as “it”, “that”, “there”, “the same category”, or “what about September?”. The store is limited to 100 least-recently-used sessions and six capped query/final-answer pairs per session. It stores no tool payloads or raw financial rows, has no disk/database/vector-store persistence, and is reset on server restart.
 2. **Phase 3B — Item-level expense analysis**: deterministic analysis of individual financial transactions and their free-text descriptions, for questions about specific items, ranked/repeated items, frequency, spending, comparisons, and trends. The LLM selects a bounded intent/specification; TypeScript performs retrieval and every financial calculation. Extend the composable analysis model where appropriate rather than adding a tool for every item question. This capability is not implemented, and the current `analyzeExpenses` does not group descriptions.
 3. **Phase 3C — Persistent semantic user memory**: intentionally maintained user facts/preferences/context across sessions, represented with embeddings and retrieved from a vector database/vector store by semantic similarity rather than keyword matching. Relevant memories would be supplied to the agent/LLM with lifecycle and privacy controls.
 
@@ -160,7 +166,7 @@ Potential work: LangGraph only where justified, more complex multi-step workflow
 - Google Sheets is currently read-only through OAuth; reuse `ExpenseDataSource` rather than duplicating Sheets/ledger logic.
 - The current mapped workbook contains expenses, not assumed investment or retirement data.
 - Do not add RAG, embeddings, or vector storage before Phase 3; persistent semantic memory must use semantic retrieval rather than keyword matching.
-- Phase 3 has separate session memory, deterministic item-level expense analysis, and persistent semantic memory tracks; none is current work.
+- Phase 3 has separate session memory, deterministic item-level expense analysis, and persistent semantic memory tracks. Only the bounded, ephemeral Phase 3A session context is implemented.
 - Item-level financial data remains behind `ExpenseDataSource`; descriptions must not automatically become embeddings, vector-store records, or user memories. Future description semantics must be bounded, tested, and uncertainty-aware.
 - Avoid unnecessary infrastructure and dependencies.
 - The API uses static bearer authentication, not OAuth/JWT/user accounts/sessions.
@@ -170,7 +176,7 @@ Potential work: LangGraph only where justified, more complex multi-step workflow
 ## 14. Explicitly deferred / not yet wanted
 
 - LangGraph without a demonstrated orchestration need.
-- Vector database, embeddings, RAG, session memory, item-level description analysis, or persistent memory during Phase 2.
+- Vector database, embeddings, RAG, item-level description analysis, or persistent memory.
 - PostgreSQL before a broader persistent data need exists.
 - Premature multi-agent architecture or specialized agents.
 - Additional wealth/investment data sources without mapped data and a scoped task.
@@ -183,8 +189,8 @@ Read `AGENTS.md`, `PROJECT_SPEC.md`, `PROJECT_STATUS.md`, and `WORKBOOK_DATA_MAP
 
 ## 16. Current state
 
-The project is a working, read-only personal Expenses-agent foundation with Phase 2 complete. It has provider-neutral tool calling, a generic deterministic expense-analysis engine plus stable transaction-detail and ordered-period tools, local OAuth-backed Sheets reads, a bearer-protected HTTP API, safe correlation/timing logs, and an automated suite using fakes. It has no implemented Phase 3 memory or item-level description analysis, database, vector search, LangGraph, writes, or investment-data integration.
+The project is a working, read-only personal Expenses-agent foundation with Phase 2 and Phase 3A complete. It has provider-neutral tool calling, a generic deterministic expense-analysis engine plus stable transaction-detail and ordered-period tools, bounded process-local session context, local OAuth-backed Sheets reads, a bearer-protected HTTP API, safe correlation/timing logs, and an automated suite using fakes. It has no item-level description analysis, persistent memory, database, vector search, LangGraph, writes, or investment-data integration.
 
 ## 17. Likely next step
 
-Phase 3 is next when explicitly prioritized. Scope its three independent tracks deliberately: bounded session context, deterministic item-level expense analysis, and persistent semantic user memory. Keep transaction descriptions in the financial-data boundary; do not implement any Phase 3 track prematurely.
+Phase 3B or 3C is next when explicitly prioritized. Scope deterministic item-level expense analysis and persistent semantic user memory independently. Keep transaction descriptions in the financial-data boundary; do not add a persistent-memory subsystem prematurely.

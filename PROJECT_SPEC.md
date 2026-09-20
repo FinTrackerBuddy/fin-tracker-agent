@@ -87,7 +87,7 @@ Phase 3 has three related but distinct capabilities. They must remain separate f
 
 ### Phase 3A — Session-level conversation memory
 
-Within one API conversation/session, retain the bounded, relevant prior-turn context needed to resolve references such as "it", "that", "there", or "the same category". Planned work includes session/conversation identifiers, conversation history, relevant-context carryover, reference resolution across turns, and a bounded-history strategy so the entire conversation is not automatically sent to the LLM forever.
+Within one API conversation/session, retain the bounded, relevant prior-turn context needed to resolve references such as "it", "that", "there", or "the same category". This is implemented as an optional caller-provided API `conversationId` with process-local, bounded history: at most 100 least-recently-used sessions and six capped user-query/final-answer pairs per session. Only reference-like follow-ups receive this context; the entire conversation is never automatically sent to the LLM. Tool results and raw financial rows are excluded, and the store has no disk/database/vector-store persistence, so it resets with the application process.
 
 ### Phase 3B — Item-level expense analysis
 

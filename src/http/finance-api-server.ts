@@ -2,6 +2,11 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { randomUUID } from "node:crypto";
 
 import type { FinanceAgentResponse } from "../agent/finance-agent.js";
+import {
+  InMemorySessionConversationMemory,
+  type ConversationTurn,
+  type SessionConversationMemory,
+} from "../conversation/session-conversation-memory.js";
 import { isAuthorizedBearerToken } from "./api-auth.js";
 import {
   consoleApplicationLogger,
@@ -13,13 +18,14 @@ import {
 const MAX_REQUEST_BODY_BYTES = 1_000_000;
 
 export interface FinanceQueryAgent {
-  respond(query: string, queryId?: string): Promise<FinanceAgentResponse>;
+  respond(query: string, queryId?: string, conversationHistory?: readonly ConversationTurn[]): Promise<FinanceAgentResponse>;
 }
 
 export function createFinanceApiServer(
   agent: FinanceQueryAgent,
   apiAuthToken: string,
   logger: ApplicationLogger = consoleApplicationLogger,
+  conversationMemory: SessionConversationMemory = new InMemorySessionConversationMemory(),
 ): Server {
   return createServer(async (request, response) => {
     const queryId = randomUUID();
@@ -55,7 +61,22 @@ export function createFinanceApiServer(
       }
 
       requestLogger.info("HTTP", "Query received", { query: summarizeQuery(query) });
-      const result = await agent.respond(query, queryId);
+      const conversationId = getConversationId(body);
+      if (conversationId === null) {
+        requestLogger.info("HTTP", "Request rejected", { status: 400, reason: "invalid_conversation_id" });
+        sendJson(response, 400, { error: "conversationId must be a 1-128 character identifier containing only letters, numbers, hyphens, or underscores." });
+        return;
+      }
+      const conversationHistory = conversationId === undefined
+        ? []
+        : conversationMemory.getRelevantHistory(conversationId, query);
+      if (conversationId !== undefined) {
+        requestLogger.info("HTTP", "Session context selected", { priorTurnCount: conversationHistory.length });
+      }
+      const result = await agent.respond(query, queryId, conversationHistory);
+      if (conversationId !== undefined) {
+        conversationMemory.remember(conversationId, { query, response: result.text });
+      }
       sendJson(response, 200, result);
       requestLogger.info("HTTP", "Request completed", { status: 200, responseCharacters: result.text.length });
     } catch (error) {
@@ -107,6 +128,20 @@ function getQuery(body: unknown): string | undefined {
   }
 
   return query.trim();
+}
+
+function getConversationId(body: unknown): string | undefined | null {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return undefined;
+  }
+  const conversationId = (body as Record<string, unknown>).conversationId;
+  if (conversationId === undefined) {
+    return undefined;
+  }
+  if (typeof conversationId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(conversationId)) {
+    return null;
+  }
+  return conversationId;
 }
 
 function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {

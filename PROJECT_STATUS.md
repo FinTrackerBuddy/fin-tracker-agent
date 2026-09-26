@@ -2,7 +2,7 @@
 
 ## Current phase
 
-Phase 3A — Session-level conversation memory (COMPLETE; Phase 3B and 3C remain next when explicitly prioritized)
+Phase 3B — Item-level expense analysis (COMPLETE; Phase 3C remains next when explicitly prioritized)
 
 ## Completed work
 
@@ -81,13 +81,15 @@ Phase 3A — Session-level conversation memory (COMPLETE; Phase 3B and 3C remain
 - Removed the redundant `getMonthlySpendingTrend` tool and its tests. Monthly progression now uses `analyzeExpenses` with `groupBy: "month"` and `aggregation: "sum"`; FinanceAgent no longer registers the removed tool. `compareSpendingPeriods` remains because its ordered sequential-comparison and percentage semantics are distinct.
 - Updated the Phase 3 documentation only; no code or application behavior changed. Phase 3 now has three separate planned tracks: bounded session conversation memory, deterministic item-level expense analysis using individual transaction descriptions, and persistent semantic user memory. Item-level analysis remains financial data behind `ExpenseDataSource`, not a memory/vector-store ingestion path; description normalization/entity grouping and the exact generic analysis extension are intentionally deferred to a scoped implementation.
 - Completed Phase 3A session-level conversation context. `POST /api/query` now accepts an optional caller-provided `conversationId` alongside `query`; its successful response remains `{ "text": "..." }`. A process-local bounded store retains at most 100 sessions and six capped query/final-answer turns per session, then supplies history only for follow-up/reference wording such as “it”, “that”, “there”, or “the same category”. It retains no tool results or raw financial rows, writes nothing to disk, and has no embeddings/vector store. Session-context logging contains only the selected prior-turn count, never a conversation ID or history text.
+- Completed Phase 3B deterministic item-level expense analysis. `analyzeExpenses` now supports exact ledger-description filtering and description grouping for ranked item spending and repeated-item frequency; `compareSpendingPeriods` supports exact-description filters for ordered item totals, differences, and percentage changes. Description variants remain distinct—there is no semantic normalization/entity grouping—and all retrieval, filtering, grouping, counting, aggregation, sorting, and comparisons remain in TypeScript. The agent receives no description vocabulary, tool-argument logs omit descriptions, and descriptions are neither persisted nor embedded.
 
 ## Current/in-progress work
 
-Phase 1 and Phase 2 are complete, and Phase 3A is complete. Phase 2 culminates in `analyzeExpenses`, a generic deterministic engine rather than an expanding set of special-purpose analysis tools; stable transaction and ordered-period tools remain available. Phase 3A adds bounded process-local conversation context/reference resolution through an optional `conversationId`, while preserving the stable `POST /api/query` response `{ "text": "..." }`. Phase 3B deterministic item-level analysis over individual transaction descriptions and Phase 3C persistent semantic user memory remain unimplemented. Transaction descriptions remain financial data, not automatic semantic-memory input. No persistent memory store, embeddings, vector database, PostgreSQL, or LangGraph has been introduced.
+Phase 1, Phase 2, Phase 3A, and Phase 3B are complete. `analyzeExpenses` remains the generic deterministic engine rather than an expanding set of special-purpose analysis tools; it now includes exact-description grouping/filtering while preserving distinct free-text variants. `compareSpendingPeriods` can compare exact-description-filtered totals in caller order. Phase 3A provides bounded process-local conversation context through an optional `conversationId`, preserving the stable `POST /api/query` response `{ "text": "..." }`. Phase 3C persistent semantic user memory remains unimplemented. Transaction descriptions remain financial data, not automatic semantic-memory input. No persistent memory store, embeddings, vector database, PostgreSQL, or LangGraph has been introduced.
 
 ## What was tested
 
+- After completing Phase 3B: `npm run typecheck`, `npm run build`, and `npm test` (79 passing). The new fake-source coverage verifies exact-description ranked spending, repeated-item frequency, exact-description ordered comparisons, distinct free-text variants, invalid exact-description rejection, and that description values are omitted from tool logs. No live LLM or Google Sheets request was made.
 - After completing Phase 2: `npm run typecheck`, `npm run build`, `npm test`, `npm run test:api`, `npm run test:finance-agent`, `npm run test:expenses`, `npm run test:google-sheets`, `npm run test:google-oauth`, and `npm run test:llm`. All use fakes/mocks for LLM and Sheets behavior; no live model or Sheets request was made.
 - After API bearer-token authentication: `npm run typecheck`, `npm run build`, `npm run test:api` (5 passing), and `npm test` (64 passing). Tests use a non-secret fixture token and verify that failed authentication never invokes the fake FinanceAgent; no live LLM or Google Sheets request was made.
 - After category-filtered period analysis: `npm run test:expenses` (23 passing), `npm run test:finance-agent` (13 passing), `npm run test:api` (5 passing), `npm run typecheck`, `npm run build`, and `npm test` (69 passing). All use fakes/mocks; the API test opens only its temporary local loopback listener and neither suite makes live Gemini or Google Sheets calls.
@@ -114,7 +116,7 @@ Phase 1 and Phase 2 are complete, and Phase 3A is complete. Phase 2 culminates i
 
 ## Next planned step
 
-Phase 3B and Phase 3C are next only when explicitly prioritized. Scope deterministic item-level analysis over individual transaction descriptions separately from persistent semantic memory. Preserve the financial-data boundary: do not automatically log, embed, or persist transaction descriptions as memories. Do not introduce embeddings or a vector database/vector store until the persistent-memory concern is separately scoped. Do not introduce Phase 4 LangGraph, PostgreSQL, specialized agents, or scheduled workflows for the current analysis tools.
+Phase 3C is next only when explicitly prioritized. Preserve the financial-data boundary: do not automatically log, embed, or persist transaction descriptions as memories. Semantic description normalization/entity resolution remains a separately scoped concern; do not introduce embeddings or a vector database/vector store until persistent memory is separately scoped. Do not introduce Phase 4 LangGraph, PostgreSQL, specialized agents, or scheduled workflows for the current analysis tools.
 
 ## Important implementation decisions
 
@@ -137,7 +139,7 @@ Phase 3B and Phase 3C are next only when explicitly prioritized. Scope determini
 - The agent now registers all three expense tools. Its safe comparison logs include compact requested labels/months, `periodCount`, `comparisonCount`, aggregate period total, duration, and inherited `queryId`; they omit transaction descriptions and credentials.
 - Phase 3 memory architecture is intentionally split into two future concerns: session-scoped, bounded relevant conversation history for context/reference resolution; and persistent, intentionally created or updated user semantic memory retrieved through embeddings and vector search. Session messages are not automatically persisted as permanent memory, and neither memory type is financial transaction storage.
 - Phase 3A uses `InMemorySessionConversationMemory`, owned by the HTTP server and scoped to its running process. The client chooses a validated 1–128-character `conversationId`; no identifier means no carryover. The store keeps only capped user-query/final-answer pairs, never LangChain tool messages or tool results, and injects at most six recent pairs only when the current wording indicates a follow-up. It evicts least-recently-used sessions above 100 and does not log IDs or history text. This is session context, not a persistent user-memory system.
-- Phase 3 also plans item-level expense analysis as a third, separate track. It may inspect individual debit records and their free-text descriptions, but must extend the generic deterministic analysis model rather than create special-purpose item tools. The LLM may select a bounded operation and format its structured result; TypeScript must perform filtering, grouping, counting, aggregation, sorting, comparison, and every financial calculation. The current `analyzeExpenses` does not yet group descriptions.
+- Phase 3B extends the generic deterministic tools rather than adding item-specific tools. `analyzeExpenses` supports an exact `descriptions` filter and `groupBy: "description"`; `compareSpendingPeriods` supports exact `descriptions` filters. Exact means case- and whitespace-sensitive ledger text after non-empty input validation: no category-like semantic canonicalization is applied, so variants are reported separately. Description strings are omitted from safe tool-argument logs and not provided as a model vocabulary; they appear in a tool result only when needed to answer the requested item analysis.
 - Description variations and the lack of a stable transaction ID mean future item normalization/entity grouping cannot silently infer equivalence. It requires a scoped, tested design with clear uncertainty behavior. Financial descriptions/rows must remain out of logs and unnecessary intermediate prompts, and must not automatically become embeddings or persistent user memories.
 - GPT-5.6 Terra is configured through `LLM_MODEL`, with `LLM_REASONING_EFFORT=medium` passed to LangChain's OpenAI chat model.
 - Local Google OAuth authorization requests use `prompt=select_account` and never send a `login_hint`. When callers explicitly set `reauthorize: true`, the authorization plan marks any saved token ineligible for reuse. The `google-auth` command owns credential loading, callback handling, token exchange, and local persistence.
@@ -187,5 +189,21 @@ Phase 3B and Phase 3C are next only when explicitly prioritized. Scope determini
 - Implementation summary: Phase 3A provides bounded, process-local session context for reference-like follow-ups, preserves the API response contract, excludes tool payloads from storage, and has deterministic coverage for carryover, caps, eviction, and API validation. Validation passed.
 - Attempts: coding 1, review 1, corrections 0
 - Timestamps: created 2026-09-20T18:35:23.574Z; completed 2026-09-20T18:43:23.611Z; status requested 2026-09-20T18:43:23.619Z
+- Limitations/blockers: None recorded by the verified workflow result.
+- Next task/milestone: Not supplied by the verified workflow result.
+
+### Task fin-tracker-agent-session-32740b5d-e086-4a27-baf9-a9eb3b17a36a-round-1: Phase 3B — Item-level expense analysis
+
+- Description: Scope deterministic item-level analysis over individual transaction descriptions separately from persistent semantic memory.
+- Final workflow state: COMPLETED
+- Completion status: COMPLETED
+- Acceptance criteria:
+  - TypeScript must retrieve, filter, group, count, aggregate, sort, and compare the financial data deterministically. — VERIFIED_BY_REVIEW_PASS
+- Validation: PASSED (3 command result(s)); completed 2026-09-26T12:08:01.154Z
+- Review: PASS; Phase 3B extends the existing deterministic tools with exact-description filtering/grouping and period comparison, preserves variant separation, avoids persistent-memory scope, and includes deterministic fake-source and safe-log coverage. Validation passed.
+- Review findings/corrections: 0
+- Implementation summary: Phase 3B extends the existing deterministic tools with exact-description filtering/grouping and period comparison, preserves variant separation, avoids persistent-memory scope, and includes deterministic fake-source and safe-log coverage. Validation passed.
+- Attempts: coding 1, review 1, corrections 0
+- Timestamps: created 2026-09-26T12:02:07.548Z; completed 2026-09-26T12:08:28.080Z; status requested 2026-09-26T12:08:28.085Z
 - Limitations/blockers: None recorded by the verified workflow result.
 - Next task/milestone: Not supplied by the verified workflow result.

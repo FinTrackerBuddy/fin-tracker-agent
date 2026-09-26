@@ -142,6 +142,33 @@ test("aggregates one filtered category in one month without a comparison", async
   });
 });
 
+test("compares an exact item description across ordered periods without merging variants", async () => {
+  const itemSource: ExpenseDataSource = {
+    monthTabs: ["August", "September"],
+    async listExpenses() {
+      return [
+        { date: "2026-08-01", category: "Food order", description: "Masala dosa", amount: 120, sourceSheet: "August", sourceRow: 9 },
+        { date: "2026-08-02", category: "Food order", description: "masala dosa", amount: 160, sourceSheet: "August", sourceRow: 10 },
+        { date: "2026-09-01", category: "Food order", description: "Masala dosa", amount: 200, sourceSheet: "September", sourceRow: 9 },
+      ];
+    },
+  };
+
+  const result = await compareSpendingPeriods({
+    descriptions: ["Masala dosa"],
+    periods: [{ label: "August", months: ["August"] }, { label: "September", months: ["September"] }],
+  }, itemSource);
+
+  assert.deepEqual(result, {
+    descriptions: ["Masala dosa"], total: 320,
+    periods: [{ label: "August", months: ["August"], total: 120 }, { label: "September", months: ["September"], total: 200 }],
+    comparisons: [{ from: "August", to: "September", difference: 80, percentageChange: 80 / 120 * 100 }],
+  });
+  await assert.rejects(compareSpendingPeriods({
+    descriptions: ["MASALA DOSA"], periods: [{ label: "August", months: ["August"] }],
+  }, itemSource), /exact current ledger description/);
+});
+
 test("aggregates multiple canonical categories across ordered periods and compares only filtered totals", async () => {
   const categorySource: ExpenseDataSource = {
     monthTabs: ["July", "August", "September"],

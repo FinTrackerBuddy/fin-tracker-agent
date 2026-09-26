@@ -484,6 +484,45 @@ test("uses analyzeExpenses for groceries by weekday instead of exposing transact
   });
 });
 
+test("uses deterministic exact-description item analysis without logging the description", async () => {
+  const calls: BaseMessage[][] = [];
+  const logger = new RecordedLogger();
+  const agent = new FinanceAgent({
+    async sendMessagesWithTools(messages): Promise<AIMessage> {
+      calls.push(messages);
+      if (calls.length === 1) {
+        return new AIMessage({ content: "", tool_calls: [{
+          id: "item-frequency-1", name: "analyzeExpenses", args: {
+            filter: { months: ["August"], descriptions: ["Masala dosa"] },
+            groupBy: "description", aggregation: "count", sort: { field: "count", direction: "desc" },
+          },
+        }] });
+      }
+      return new AIMessage("The selected item appeared twice in August.");
+    },
+  }, undefined, undefined, expenseCategoryVocabulary, logger, undefined, createAnalyzeExpensesTool({
+    monthTabs: ["August"],
+    async listExpenses() {
+      return [
+        { date: "2026-08-01", category: "Food order", description: "Masala dosa", amount: 120, sourceSheet: "August", sourceRow: 9 },
+        { date: "2026-08-02", category: "Food order", description: "Masala dosa", amount: 140, sourceSheet: "August", sourceRow: 10 },
+      ];
+    },
+  }));
+
+  assert.deepEqual(await agent.respond("Analyse the selected item in August."), {
+    text: "The selected item appeared twice in August.",
+  });
+  assert.match(calls[0]?.[0]?.content.toString() ?? "", /groupBy month, dayOfWeek, category, account, or description/);
+  const toolMessage = calls[1]?.find((message) => message instanceof ToolMessage);
+  assert.ok(toolMessage);
+  assert.deepEqual(JSON.parse(toolMessage.content.toString()), {
+    filter: { months: ["August"], descriptions: ["Masala dosa"] }, groupBy: "description",
+    aggregation: "count", results: [{ key: "Masala dosa", count: 2 }], matchingExpenseCount: 2,
+  });
+  assert.doesNotMatch(logger.entries.join("\n"), /Masala dosa/);
+});
+
 test("maps distinct ranked-analysis phrasings to the same composable analysis tool", async () => {
   const specifications: unknown[] = [];
   for (const request of ["Which weekdays do I spend the most on groceries?", "What are my top five categories in August?"]) {

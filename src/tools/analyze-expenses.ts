@@ -14,7 +14,7 @@ import {
 import { type ApplicationLogger } from "../logging/application-logger.js";
 
 /** The intentionally finite set of dimensions supported by the expense ledger. */
-export type ExpenseGroupDimension = "month" | "dayOfWeek" | "category" | "account";
+export type ExpenseGroupDimension = "month" | "dayOfWeek" | "category" | "account" | "description";
 export type ExpenseAggregation = "sum" | "count";
 export type ExpenseSortField = "total" | "count";
 export type SortDirection = "asc" | "desc";
@@ -31,6 +31,8 @@ export interface ExpenseAnalysisFilter {
   categories?: string[];
   /** Exact ledger account labels, matched case-insensitively after trimming. */
   accounts?: string[];
+  /** Exact ledger descriptions. Variants are deliberately not normalized or merged. */
+  descriptions?: string[];
   /** Account-type filter supported by the current workbook. */
   paymentMethod?: "cash";
 }
@@ -67,9 +69,10 @@ const analysisSchema = z.object({
     endDate: z.string().optional(),
     categories: z.array(z.string()).min(1).optional(),
     accounts: z.array(z.string()).min(1).optional(),
+    descriptions: z.array(z.string()).min(1).optional(),
     paymentMethod: z.enum(["cash"]).optional(),
   }).optional(),
-  groupBy: z.enum(["month", "dayOfWeek", "category", "account"]).optional(),
+  groupBy: z.enum(["month", "dayOfWeek", "category", "account", "description"]).optional(),
   aggregation: z.enum(["sum", "count"]),
   sort: z.object({
     field: z.enum(["total", "count"]),
@@ -124,7 +127,7 @@ export function createAnalyzeExpensesTool(source?: ExpenseDataSource, logger?: A
     async (input): Promise<ExpenseAnalysisOutput> => analyzeExpenses(input, source, logger),
     {
       name: "analyzeExpenses",
-      description: "Run a deterministic, composable expense analysis. It filters normalized debit expenses, groups only by month, dayOfWeek, category, or account, then deterministically sums or counts, sorts, and optionally limits results. Use this instead of getExpenses whenever the user asks for grouped, ranked, top-N, or aggregated analysis. Do not calculate from raw transactions yourself.",
+      description: "Run a deterministic, composable expense analysis. It filters normalized debit expenses, groups only by month, dayOfWeek, category, account, or exact description, then deterministically sums or counts, sorts, and optionally limits results. Description grouping retains exact ledger text; it never infers that variants are the same item. Use this instead of getExpenses whenever the user asks for grouped, ranked, top-N, repeated-item, or aggregated analysis. Do not calculate from raw transactions yourself.",
       schema: analysisSchema,
     },
   );
@@ -150,6 +153,7 @@ function resolveFilter(
   const months = input.months ? resolveMonths(input.months, configuredMonths) : undefined;
   const categories = input.categories ? resolveCategories(input.categories, expenses) : undefined;
   const accounts = input.accounts ? normalizeNonEmptyStrings(input.accounts, "accounts") : undefined;
+  const descriptions = input.descriptions ? resolveDescriptions(input.descriptions, expenses) : undefined;
   return {
     ...(months ? { months: [...months] } : {}),
     ...(date ? { date } : {}),
@@ -157,6 +161,7 @@ function resolveFilter(
     ...(endDate ? { endDate } : {}),
     ...(categories ? { categories } : {}),
     ...(accounts ? { accounts } : {}),
+    ...(descriptions ? { descriptions } : {}),
     ...(input.paymentMethod ? { paymentMethod: input.paymentMethod } : {}),
   };
 }
@@ -169,6 +174,7 @@ function matchesFilter(expense: GoogleSheetsExpense, filter: ExpenseAnalysisOutp
   if (filter.endDate && expense.date > filter.endDate) return false;
   if (filter.categories && !filter.categories.some((category) => normalizeExpenseCategory(category) === normalizeExpenseCategory(expense.category))) return false;
   if (filter.accounts && !filter.accounts.some((account) => normalizeText(account) === normalizeText(expense.account ?? ""))) return false;
+  if (filter.descriptions && !filter.descriptions.includes(expense.description)) return false;
   return !filter.paymentMethod || /\bcash\b/i.test(expense.account ?? "");
 }
 
@@ -178,6 +184,7 @@ function getGroupKey(expense: GoogleSheetsExpense, groupBy: ExpenseGroupDimensio
     case "dayOfWeek": return dayOfWeek(expense.date);
     case "category": return expense.category;
     case "account": return expense.account?.trim() || "Unspecified";
+    case "description": return expense.description;
     default: return "All expenses";
   }
 }
@@ -214,6 +221,18 @@ function resolveCategories(requestedCategories: readonly string[], expenses: rea
     throw new Error(`Unknown expense category: ${selection.unknownCategories.join(", ")}. Use a literal category from the current workbook vocabulary.`);
   }
   return selection.categories;
+}
+
+function resolveDescriptions(requestedDescriptions: readonly string[], expenses: readonly GoogleSheetsExpense[]): string[] {
+  if (requestedDescriptions.length === 0 || requestedDescriptions.some((description) => typeof description !== "string" || !description.trim())) {
+    throw new Error("descriptions must include non-empty strings.");
+  }
+  const descriptions = [...new Set(requestedDescriptions)];
+  const availableDescriptions = new Set(expenses.map((expense) => expense.description));
+  if (descriptions.some((description) => !availableDescriptions.has(description))) {
+    throw new Error("Unknown expense description. Description filters require an exact current ledger description.");
+  }
+  return descriptions;
 }
 
 function normalizeNonEmptyStrings(values: readonly string[], field: string): string[] {

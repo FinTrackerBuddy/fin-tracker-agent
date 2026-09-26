@@ -20,6 +20,8 @@ export interface SpendingPeriodInput {
 export interface CompareSpendingPeriodsInput {
   /** Optional literal workbook category labels to include in every period. */
   categories?: string[];
+  /** Optional exact ledger descriptions to include in every period. */
+  descriptions?: string[];
   /** Ordered periods; comparisons are made only between adjacent entries. */
   periods: SpendingPeriodInput[];
 }
@@ -42,7 +44,9 @@ export interface SpendingPeriodComparison {
 export interface CompareSpendingPeriodsOutput {
   /** Present only when the calculation was filtered to workbook categories. */
   categories?: string[];
-  /** Sum of the returned category-filtered period totals, when a filter is supplied. */
+  /** Present only when the calculation was filtered to exact ledger descriptions. */
+  descriptions?: string[];
+  /** Sum of the returned filtered period totals, when a filter is supplied. */
   total?: number;
   periods: SpendingPeriodTotal[];
   comparisons: SpendingPeriodComparison[];
@@ -63,7 +67,9 @@ export async function compareSpendingPeriods(
   const periods = resolvePeriods(input, expenseSource.monthTabs);
   const expenses = await expenseSource.listExpenses();
   const categories = resolveCategories(input.categories, expenses);
+  const descriptions = resolveDescriptions(input.descriptions, expenses);
   const normalizedCategories = new Set(categories.map(normalizeExpenseCategory));
+  const selectedDescriptions = new Set(descriptions);
   const totalsByMonth = new Map<string, number>();
 
   for (const expense of expenses) {
@@ -71,6 +77,7 @@ export async function compareSpendingPeriods(
       && !normalizedCategories.has(normalizeExpenseCategory(expense.category))) {
       continue;
     }
+    if (selectedDescriptions.size > 0 && !selectedDescriptions.has(expense.description)) continue;
     totalsByMonth.set(expense.sourceSheet, (totalsByMonth.get(expense.sourceSheet) ?? 0) + expense.amount);
   }
 
@@ -81,8 +88,12 @@ export async function compareSpendingPeriods(
   }));
 
   return {
-    ...(categories.length > 0
-      ? { categories, total: periodTotals.reduce((total, period) => total + period.total, 0) }
+    ...((categories.length > 0 || descriptions.length > 0)
+      ? {
+        ...(categories.length > 0 ? { categories } : {}),
+        ...(descriptions.length > 0 ? { descriptions } : {}),
+        total: periodTotals.reduce((total, period) => total + period.total, 0),
+      }
       : {}),
     periods: periodTotals,
     comparisons: periodTotals.slice(1).map((period, index) => {
@@ -108,10 +119,12 @@ export function createCompareSpendingPeriodsTool(
     {
       name: "compareSpendingPeriods",
       description:
-        "Get deterministic totals for one or more ordered month-based periods, optionally filtered to literal workbook expense categories. Use for category spending analysis by month/period, comparisons, increases, decreases, differences, or percentage changes. Preserve the user's period order. Each period has a unique label and one or more actual workbook month tabs (April through March).",
+        "Get deterministic totals for one or more ordered month-based periods, optionally filtered to literal workbook expense categories and/or exact ledger descriptions. Description filtering never normalizes or merges variants. Use for category or exact-item spending analysis by month/period, comparisons, increases, decreases, differences, or percentage changes. Preserve the user's period order. Each period has a unique label and one or more actual workbook month tabs (April through March).",
       schema: z.object({
         categories: z.array(z.string()).min(1).optional()
           .describe("Optional literal workbook category labels. When supplied, every period total and comparison includes only these categories."),
+        descriptions: z.array(z.string()).min(1).optional()
+          .describe("Optional exact ledger descriptions. When supplied, every period total and comparison includes only exactly matching descriptions; do not treat variants as equivalent."),
         periods: z.array(z.object({
           label: z.string().min(1).describe("Unique user-facing period label, for example August."),
           months: z.array(z.string()).min(1).describe("Actual workbook month tabs included in this period."),
@@ -194,4 +207,20 @@ function resolveCategories(
     );
   }
   return selection.categories;
+}
+
+function resolveDescriptions(
+  requestedDescriptions: readonly string[] | undefined,
+  expenses: readonly { description: string }[],
+): string[] {
+  if (requestedDescriptions === undefined) return [];
+  if (requestedDescriptions.length === 0 || !requestedDescriptions.every((description) => typeof description === "string" && description.trim())) {
+    throw new Error("descriptions must include non-empty strings.");
+  }
+  const descriptions = [...new Set(requestedDescriptions)];
+  const availableDescriptions = new Set(expenses.map((expense) => expense.description));
+  if (descriptions.some((description) => !availableDescriptions.has(description))) {
+    throw new Error("Unknown expense description. Description filters require an exact current ledger description.");
+  }
+  return descriptions;
 }

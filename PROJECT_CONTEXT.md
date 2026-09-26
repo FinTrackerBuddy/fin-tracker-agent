@@ -78,7 +78,7 @@ The agent’s bounded tool loop allows at most three model/tool rounds. It must 
 
 - **`getExpenses`** — retrieves transaction-level debit expenses with deterministic month, ISO-date, literal-category, and cash payment-method filtering.
 - **`compareSpendingPeriods`** — returns deterministic totals for one or more explicitly ordered periods, each containing one or more configured months. Its optional literal `categories` filter applies to every period, so category analysis never falls back to overall spending; filtered calls also return their deterministic aggregate total, plus sequential differences and percentage changes when multiple periods are supplied.
-- **`analyzeExpenses`** — generic closed-specification analysis over normalized expenses. It composes workbook-backed month/date-range/category/account/cash filters with grouping by month, weekday, category, or account; `sum` or `count`; deterministic sorting; and a bounded top-N limit. It has no arbitrary expressions, merchant grouping, or LLM calculation path.
+- **`analyzeExpenses`** — generic closed-specification analysis over normalized expenses. It composes workbook-backed month/date-range/category/account/cash and exact-description filters with grouping by month, weekday, category, account, or exact description; `sum` or `count`; deterministic sorting; and a bounded top-N limit. Exact descriptions are not normalized or merged, so free-text variants remain distinct. It has no arbitrary expressions or LLM calculation path.
 
 The agent supplies a compact, dynamically derived expense-category vocabulary to the LLM. Category selection is canonicalized and validated against current workbook labels; there is no hard-coded semantic mapping or semantic data retrieval.
 
@@ -149,10 +149,10 @@ Completed: ordered category-aware period comparison and the generic composable `
 Three separate concerns are planned:
 
 1. **Phase 3A — Session-level conversation memory — COMPLETE**: an optional API `conversationId` selects capped process-local context for reference-like follow-ups such as “it”, “that”, “there”, “the same category”, or “what about September?”. The store is limited to 100 least-recently-used sessions and six capped query/final-answer pairs per session. It stores no tool payloads or raw financial rows, has no disk/database/vector-store persistence, and is reset on server restart.
-2. **Phase 3B — Item-level expense analysis**: deterministic analysis of individual financial transactions and their free-text descriptions, for questions about specific items, ranked/repeated items, frequency, spending, comparisons, and trends. The LLM selects a bounded intent/specification; TypeScript performs retrieval and every financial calculation. Extend the composable analysis model where appropriate rather than adding a tool for every item question. This capability is not implemented, and the current `analyzeExpenses` does not group descriptions.
+2. **Phase 3B — Item-level expense analysis — COMPLETE**: `analyzeExpenses` now deterministically filters and groups exact transaction descriptions for ranked item spending and repeated-item frequency; `compareSpendingPeriods` supports exact-description filters for ordered item comparisons. TypeScript performs retrieval, filtering, grouping, counting, aggregation, sorting, and comparisons. No description vocabulary is injected into the model, and descriptions are omitted from logs. Exact matching deliberately leaves free-text variants distinct; semantic normalization/entity resolution remains unimplemented.
 3. **Phase 3C — Persistent semantic user memory**: intentionally maintained user facts/preferences/context across sessions, represented with embeddings and retrieved from a vector database/vector store by semantic similarity rather than keyword matching. Relevant memories would be supplied to the agent/LLM with lifecycle and privacy controls.
 
-Description text is financial transaction data behind `ExpenseDataSource`, never an automatic user-memory or vector-store input. It is free text with no guaranteed stable ID; future normalization/entity grouping must be explicitly designed, tested, and uncertainty-aware rather than silently equating variants. Retrieve the minimum required transaction detail and never log raw descriptions/rows or expose unnecessary transaction data in prompts. None of the three Phase 3 concerns, embeddings, or vector storage is implemented now.
+Description text is financial transaction data behind `ExpenseDataSource`, never an automatic user-memory or vector-store input. It is free text with no guaranteed stable ID; semantic normalization/entity grouping remains explicitly deferred and must be designed, tested, and uncertainty-aware rather than silently equating variants. Retrieve the minimum required transaction detail and never log raw descriptions/rows or expose unnecessary transaction data in prompts. Phase 3C embeddings and vector storage remain unimplemented.
 
 ### Phase 4 — Advanced Agent Architecture — FUTURE
 
@@ -176,7 +176,7 @@ Potential work: LangGraph only where justified, more complex multi-step workflow
 ## 14. Explicitly deferred / not yet wanted
 
 - LangGraph without a demonstrated orchestration need.
-- Vector database, embeddings, RAG, item-level description analysis, or persistent memory.
+- Vector database, embeddings, RAG, semantic description normalization/entity resolution, or persistent memory.
 - PostgreSQL before a broader persistent data need exists.
 - Premature multi-agent architecture or specialized agents.
 - Additional wealth/investment data sources without mapped data and a scoped task.
@@ -189,7 +189,7 @@ Read `AGENTS.md`, `PROJECT_SPEC.md`, `PROJECT_STATUS.md`, and `WORKBOOK_DATA_MAP
 
 ## 16. Current state
 
-The project is a working, read-only personal Expenses-agent foundation with Phase 2 and Phase 3A complete. It has provider-neutral tool calling, a generic deterministic expense-analysis engine plus stable transaction-detail and ordered-period tools, bounded process-local session context, local OAuth-backed Sheets reads, a bearer-protected HTTP API, safe correlation/timing logs, and an automated suite using fakes. It has no item-level description analysis, persistent memory, database, vector search, LangGraph, writes, or investment-data integration.
+The project is a working, read-only personal Expenses-agent foundation with Phase 2, Phase 3A, and Phase 3B complete. It has provider-neutral tool calling, generic deterministic expense/item analysis plus stable transaction-detail and ordered-period tools, bounded process-local session context, local OAuth-backed Sheets reads, a bearer-protected HTTP API, safe correlation/timing logs, and an automated suite using fakes. It has no semantic description normalization, persistent memory, database, vector search, LangGraph, writes, or investment-data integration.
 
 ## 17. Likely next step
 

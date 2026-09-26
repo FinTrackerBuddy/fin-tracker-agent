@@ -77,10 +77,47 @@ test("supports count aggregation, date/account/payment filters, and valid empty 
   });
 });
 
+test("groups exact descriptions for ranked item spending and repeated-item frequency without merging variants", async () => {
+  const itemSource: ExpenseDataSource = {
+    monthTabs: ["August"],
+    async listExpenses() {
+      return [
+        { date: "2026-08-01", category: "Food order", description: "Masala dosa", amount: 120, sourceSheet: "August", sourceRow: 9 },
+        { date: "2026-08-02", category: "Food order", description: "Masala dosa", amount: 140, sourceSheet: "August", sourceRow: 10 },
+        { date: "2026-08-03", category: "Food order", description: "masala dosa", amount: 160, sourceSheet: "August", sourceRow: 11 },
+        { date: "2026-08-04", category: "Dining out", description: "Thali", amount: 300, sourceSheet: "August", sourceRow: 12 },
+      ];
+    },
+  };
+
+  const ranked = await analyzeExpenses({
+    filter: { months: ["August"] }, groupBy: "description", aggregation: "sum",
+    sort: { field: "total", direction: "desc" }, limit: 2,
+  }, itemSource);
+  const frequency = await analyzeExpenses({
+    filter: { months: ["August"] }, groupBy: "description", aggregation: "count",
+    sort: { field: "count", direction: "desc" },
+  }, itemSource);
+  const exactFilter = await analyzeExpenses({
+    filter: { descriptions: ["Masala dosa"] }, aggregation: "sum",
+  }, itemSource);
+
+  assert.deepEqual(ranked.results, [{ key: "Thali", total: 300 }, { key: "Masala dosa", total: 260 }]);
+  assert.deepEqual(frequency.results, [
+    { key: "Masala dosa", count: 2 }, { key: "masala dosa", count: 1 }, { key: "Thali", count: 1 },
+  ]);
+  assert.deepEqual(exactFilter, {
+    filter: { descriptions: ["Masala dosa"] }, aggregation: "sum",
+    results: [{ key: "All expenses", total: 260 }], matchingExpenseCount: 2,
+  });
+  await assert.rejects(analyzeExpenses({ filter: { descriptions: ["MASALA DOSA"] }, aggregation: "sum" }, itemSource), /exact current ledger description/);
+});
+
 test("rejects invalid closed specifications deterministically", async () => {
   await assert.rejects(analyzeExpenses({ filter: { categories: ["Food"] }, aggregation: "sum" }, source), /Unknown expense category/);
   await assert.rejects(analyzeExpenses({ groupBy: "merchant" as never, aggregation: "sum" }, source), /Invalid option/);
   await assert.rejects(analyzeExpenses({ aggregation: "average" as never }, source), /Invalid option/);
+  await assert.rejects(analyzeExpenses({ groupBy: "merchant" as never, aggregation: "count" }, source), /Invalid option/);
   await assert.rejects(analyzeExpenses({ aggregation: "sum", sort: { field: "count", direction: "desc" } }, source), /sort.field must be total/);
   await assert.rejects(analyzeExpenses({ aggregation: "sum", limit: 0 }, source), /Too small/);
   await assert.rejects(analyzeExpenses({ filter: { startDate: "2026-08-10", endDate: "2026-08-01" }, aggregation: "sum" }, source), /startDate/);

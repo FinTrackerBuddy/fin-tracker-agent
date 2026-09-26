@@ -91,7 +91,7 @@ Within one API conversation/session, retain the bounded, relevant prior-turn con
 
 ### Phase 3B — Item-level expense analysis
 
-Extend the deterministic expense-analysis model to support questions that inspect individual debit transactions and their free-text descriptions, such as items ordered in a month, ranked item spending, repeated-item frequency, item-by-period comparisons, and item trends. The LLM may interpret the question and select a bounded analysis specification; TypeScript must retrieve, filter, group, count, aggregate, sort, and compare the financial data deterministically. It must not calculate totals from raw transaction records in LLM reasoning.
+Extend the deterministic expense-analysis model to support questions that inspect individual debit transactions and their free-text descriptions, such as items ordered in a month, ranked item spending, repeated-item frequency, item-by-period comparisons, and item trends. The LLM may interpret the question and select a bounded analysis specification; TypeScript must retrieve, filter, group, count, aggregate, sort, and compare the financial data deterministically. It must not calculate totals from raw transaction records in LLM reasoning. Description-level operations must use exact ledger text unless a separately scoped normalization design is introduced; they must not silently merge variants.
 
 This is an extension of the generic composable analysis direction, not a mandate to add one tool per item question or to prescribe a new API/tool shape before implementation. The existing Phase 2 `analyzeExpenses` capability does not yet support description grouping.
 

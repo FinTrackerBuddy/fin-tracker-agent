@@ -6,6 +6,10 @@ Phase 3B — Item-level expense analysis (COMPLETE; Phase 3C remains next when e
 
 ## Completed work
 
+- HTTP terminal logs now include `durationMs`, measured from receipt through authentication, body parsing, agent work, and response construction. Successful requests include it on `Request completed`; rejected and failed requests include the same end-to-end measurement on their terminal event.
+- Added a formula-backed debit-summary read path: category/month monetary totals, category vocabulary, and category-only period comparisons read `Debit summary!A:N` instead of scanning every monthly ledger. Individual transaction, date, account/cash, weekday, exact-description, and count analysis continues to use the authoritative ledger tabs. The current agent is debit-expense-only, so `Credit summary` is reserved for a future explicitly scoped credit/income capability.
+- LLM invocation logs now include a bounded, redacted `debugQuery` alongside the existing attempt, duration, and `queryId` metadata.
+- Added bounded, credential-redacted error diagnostics to HTTP, expense-category loading, LLM invocation, and tool-execution logs. Each failure now retains its `queryId`, error type, and safe underlying message/cause chain while the API keeps its generic 500 response. OAuth token rejections now include only the safe HTTP status and Google error code (for example, `invalid_grant`), never response text or token material.
 - Sanitized source-controlled workbook documentation before the initial GitHub publication: the personal workbook name and identifier remain only in ignored local configuration, not tracked files.
 - Initialized a minimal Node.js and TypeScript project.
 - Added the `src/` application structure with a small entry point.
@@ -154,6 +158,7 @@ Phase 3C is next only when explicitly prioritized. Preserve the financial-data b
 
 ## Known issues/blockers
 
+- Live diagnostics on 2026-09-26 found local DNS resolution failing for `oauth2.googleapis.com` (`getaddrinfo ENOTFOUND`) while loading the category vocabulary. This prevents the Sheets/OAuth access-token step before any LLM request; restore network/DNS access and retry before reauthorizing OAuth.
 - `credentials.json` is present locally and ignored. Its Desktop/Installed client redirect metadata does not need to list the application's fixed loopback callback. Run `npm run google-auth` to create the ignored local `token.json`; reauthorize only if it is missing, invalid, revoked, or intentionally replaced with `npm run google-auth -- --force`.
 - The workbook uses free-text account/category labels, yearless date displays, formula-based amounts, fixed-range summary formulas, and no stable transaction IDs. A future reader must map the monthly ledger carefully; see `WORKBOOK_DATA_MAP.md`.
 - A live LLM request requires the selected provider's valid API key (`OPENAI_API_KEY` or `GEMINI_API_KEY`); the automated smoke tests intentionally make no external API request.

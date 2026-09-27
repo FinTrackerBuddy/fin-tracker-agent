@@ -14,6 +14,8 @@ export const DEFAULT_EXPENSE_MONTH_TABS = [
 ] as const;
 
 export const DEFAULT_MONTHLY_LEDGER_RANGE = "A9:G";
+export const DEFAULT_DEBIT_SUMMARY_TAB = "Debit summary";
+export const DEFAULT_SUMMARY_RANGE = "A:N";
 
 export interface GoogleSheetsLedgerConfiguration {
   spreadsheetId: string;
@@ -51,6 +53,11 @@ export function getMonthlyLedgerA1Range(
   ledgerRange: string = DEFAULT_MONTHLY_LEDGER_RANGE,
 ): string {
   return `${sheetName}!${ledgerRange}`;
+}
+
+/** The debit summary holds fiscal total, category, then April–March values. */
+export function getDebitSummaryA1Range(): string {
+  return `${DEFAULT_DEBIT_SUMMARY_TAB}!${DEFAULT_SUMMARY_RANGE}`;
 }
 
 function parseMonthTabs(configuredTabs: string | undefined): string[] {

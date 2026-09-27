@@ -14,7 +14,7 @@
     "test:finance-agent": "npm run build && node --test dist/agent/date-context.test.js dist/agent/finance-agent.test.js",
     "test:expenses": "npm run build && node --test dist/tools/get-expenses.test.js dist/tools/compare-spending-periods.test.js dist/tools/analyze-expenses.test.js",
     "test:google-oauth": "npm run build && node --test dist/google-sheets/local-oauth.test.js dist/google-sheets/oauth-token-store.test.js dist/google-sheets/google-auth.test.js",
-    "test:google-sheets": "npm run build && node --test dist/google-sheets/config.test.js dist/google-sheets/sheets-api.test.js dist/google-sheets/ledger-reader.test.js dist/google-sheets/expense-data-source.test.js dist/google-sheets/expense-category-vocabulary.test.js",
+    "test:google-sheets": "npm run build && node --test dist/google-sheets/config.test.js dist/google-sheets/sheets-api.test.js dist/google-sheets/ledger-reader.test.js dist/google-sheets/debit-summary-reader.test.js dist/google-sheets/expense-data-source.test.js dist/google-sheets/expense-category-vocabulary.test.js",
     "llm:example": "node --env-file-if-exists=.env dist/examples/llm-example.js",
     "finance-agent:example": "node --env-file-if-exists=.env dist/examples/finance-agent-example.js",
     "google-auth": "npm run build && node dist/google-sheets/google-auth.js"

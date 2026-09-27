@@ -40,3 +40,15 @@ test("caches the compact vocabulary instead of rereading it on every request", a
   await vocabulary.listCategories();
   assert.equal(reads, 2);
 });
+
+test("uses Debit summary categories when the source provides them", async () => {
+  let ledgerReads = 0;
+  const vocabulary = new CachedExpenseCategoryVocabulary(async () => ({
+    monthTabs: ["September"],
+    async listExpenses() { ledgerReads += 1; return []; },
+    async listDebitSummary() { return [{ category: "Food order", month: "September", amount: 400 }]; },
+  }));
+
+  assert.deepEqual(await vocabulary.listCategories(), ["Food order"]);
+  assert.equal(ledgerReads, 0);
+});

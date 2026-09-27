@@ -5,6 +5,7 @@ import {
   createGoogleSheetsExpenseDataSourceFromEnvironment,
   type ExpenseDataSource,
 } from "../google-sheets/expense-data-source.js";
+import type { DebitSummaryAmount } from "../google-sheets/debit-summary-reader.js";
 import {
   deriveExpenseCategories,
   normalizeExpenseCategory,
@@ -65,6 +66,9 @@ export async function compareSpendingPeriods(
   const expenseSource = source
     ?? await createGoogleSheetsExpenseDataSourceFromEnvironment(process.env, logger);
   const periods = resolvePeriods(input, expenseSource.monthTabs);
+  if (!input.descriptions && expenseSource.listDebitSummary) {
+    return compareFromDebitSummary(input, periods, await expenseSource.listDebitSummary());
+  }
   const expenses = await expenseSource.listExpenses();
   const categories = resolveCategories(input.categories, expenses);
   const descriptions = resolveDescriptions(input.descriptions, expenses);
@@ -81,6 +85,30 @@ export async function compareSpendingPeriods(
     totalsByMonth.set(expense.sourceSheet, (totalsByMonth.get(expense.sourceSheet) ?? 0) + expense.amount);
   }
 
+  return formatComparisonOutput(periods, totalsByMonth, categories, descriptions);
+}
+
+function compareFromDebitSummary(
+  input: CompareSpendingPeriodsInput,
+  periods: Array<{ label: string; months: string[] }>,
+  summary: readonly DebitSummaryAmount[],
+): CompareSpendingPeriodsOutput {
+  const categories = resolveCategories(input.categories, summary);
+  const selectedCategories = new Set(categories.map(normalizeExpenseCategory));
+  const totalsByMonth = new Map<string, number>();
+  for (const amount of summary) {
+    if (selectedCategories.size > 0 && !selectedCategories.has(normalizeExpenseCategory(amount.category))) continue;
+    totalsByMonth.set(amount.month, (totalsByMonth.get(amount.month) ?? 0) + amount.amount);
+  }
+  return formatComparisonOutput(periods, totalsByMonth, categories);
+}
+
+function formatComparisonOutput(
+  periods: Array<{ label: string; months: string[] }>,
+  totalsByMonth: ReadonlyMap<string, number>,
+  categories: readonly string[],
+  descriptions: readonly string[] = [],
+): CompareSpendingPeriodsOutput {
   const periodTotals = periods.map(({ label, months }) => ({
     label,
     months,
@@ -90,8 +118,8 @@ export async function compareSpendingPeriods(
   return {
     ...((categories.length > 0 || descriptions.length > 0)
       ? {
-        ...(categories.length > 0 ? { categories } : {}),
-        ...(descriptions.length > 0 ? { descriptions } : {}),
+        ...(categories.length > 0 ? { categories: [...categories] } : {}),
+        ...(descriptions.length > 0 ? { descriptions: [...descriptions] } : {}),
         total: periodTotals.reduce((total, period) => total + period.total, 0),
       }
       : {}),
@@ -119,7 +147,7 @@ export function createCompareSpendingPeriodsTool(
     {
       name: "compareSpendingPeriods",
       description:
-        "Get deterministic totals for one or more ordered month-based periods, optionally filtered to literal workbook expense categories and/or exact ledger descriptions. Description filtering never normalizes or merges variants. Use for category or exact-item spending analysis by month/period, comparisons, increases, decreases, differences, or percentage changes. Preserve the user's period order. Each period has a unique label and one or more actual workbook month tabs (April through March).",
+        "Get deterministic totals for one or more ordered month-based periods, optionally filtered to literal workbook expense categories and/or exact ledger descriptions. Category-only totals use the Debit summary; exact-description filtering reads transaction detail and never normalizes or merges variants. Use for category or exact-item spending analysis by month/period, comparisons, increases, decreases, differences, or percentage changes. Preserve the user's period order. Each period has a unique label and one or more actual workbook month tabs (April through March).",
       schema: z.object({
         categories: z.array(z.string()).min(1).optional()
           .describe("Optional literal workbook category labels. When supplied, every period total and comparison includes only these categories."),

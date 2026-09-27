@@ -81,6 +81,6 @@ Debts & Reimbursals; household/electronics reconciliation checks
 - Summary formulas use large fixed row ranges even where the visible monthly data is much shorter. This is functional as a buffer but creates an implicit range convention that a future service should not copy blindly.
 - Account numbers appear as numeric values in the account cards. A future integration must never coerce or expose them as financial amounts, and should avoid logging them.
 
-## Recommended next implementation milestone
+## Application read strategy
 
-Implement only a read-only Google Sheets expense source for the monthly ledger tabs. Configure the workbook ID outside source control, read rows 9 onward from the selected month tabs, map the seven observed ledger fields, use the effective numeric debit/credit values, and keep the current `FinanceAgent` response contract unchanged. Do not add writes, portfolio features, database storage, or later-phase infrastructure.
+For debit category/month monetary totals, the application reads the formula-backed `Debit summary!A:N` matrix rather than every monthly ledger. The analogous `Credit summary` remains the appropriate source for a future scoped credit/income capability; it is not used by the current debit-expense agent. Monthly ledgers remain the authoritative source for individual transactions and analyses requiring dates, accounts, cash, descriptions, weekdays, or transaction counts.

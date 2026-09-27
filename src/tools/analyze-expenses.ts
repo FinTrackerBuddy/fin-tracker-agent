@@ -6,6 +6,7 @@ import {
   type ExpenseDataSource,
   type GoogleSheetsExpense,
 } from "../google-sheets/expense-data-source.js";
+import type { DebitSummaryAmount } from "../google-sheets/debit-summary-reader.js";
 import {
   deriveExpenseCategories,
   normalizeExpenseCategory,
@@ -58,7 +59,8 @@ export interface ExpenseAnalysisOutput {
   groupBy?: ExpenseGroupDimension;
   aggregation: ExpenseAggregation;
   results: ExpenseAnalysisResult[];
-  matchingExpenseCount: number;
+  /** Omitted for summary-backed monetary analysis because the summary has no transaction counts. */
+  matchingExpenseCount?: number;
 }
 
 const analysisSchema = z.object({
@@ -95,6 +97,9 @@ export async function analyzeExpenses(
   validateSortForAggregation(specification);
   const expenseSource = source
     ?? await createGoogleSheetsExpenseDataSourceFromEnvironment(process.env, logger);
+  if (canUseDebitSummary(specification) && expenseSource.listDebitSummary) {
+    return analyzeDebitSummary(specification, expenseSource.monthTabs, await expenseSource.listDebitSummary());
+  }
   const expenses = await expenseSource.listExpenses();
   const filter = resolveFilter(specification.filter, expenseSource.monthTabs, expenses);
   const matchingExpenses = expenses.filter((expense) => matchesFilter(expense, filter));
@@ -122,12 +127,63 @@ export async function analyzeExpenses(
   };
 }
 
+function canUseDebitSummary(specification: ExpenseAnalysisSpec): boolean {
+  const filter = specification.filter;
+  return specification.aggregation === "sum"
+    && !filter?.date
+    && !filter?.startDate
+    && !filter?.endDate
+    && !filter?.accounts
+    && !filter?.descriptions
+    && !filter?.paymentMethod
+    && (specification.groupBy === undefined || specification.groupBy === "month" || specification.groupBy === "category");
+}
+
+function analyzeDebitSummary(
+  specification: ExpenseAnalysisSpec,
+  configuredMonths: readonly string[],
+  summary: readonly DebitSummaryAmount[],
+): ExpenseAnalysisOutput {
+  const filter = resolveSummaryFilter(specification.filter, configuredMonths, summary);
+  const values = new Map<string, number>();
+  for (const amount of summary) {
+    if (filter?.months && !filter.months.includes(amount.month)) continue;
+    if (filter?.categories && !filter.categories.some((category) => normalizeExpenseCategory(category) === normalizeExpenseCategory(amount.category))) continue;
+    const key = specification.groupBy === "month"
+      ? amount.month
+      : specification.groupBy === "category" ? amount.category : "All expenses";
+    values.set(key, (values.get(key) ?? 0) + amount.amount);
+  }
+  const results = [...values.entries()].map(([key, total]) => ({ key, total }));
+  sortResults(results, specification.sort);
+  return {
+    ...(filter ? { filter } : {}),
+    ...(specification.groupBy ? { groupBy: specification.groupBy } : {}),
+    aggregation: "sum",
+    results: specification.limit === undefined ? results : results.slice(0, specification.limit),
+  };
+}
+
+function resolveSummaryFilter(
+  input: ExpenseAnalysisFilter | undefined,
+  configuredMonths: readonly string[],
+  summary: readonly DebitSummaryAmount[],
+): ExpenseAnalysisOutput["filter"] | undefined {
+  if (!input) return undefined;
+  const months = input.months ? resolveMonths(input.months, configuredMonths) : undefined;
+  const categories = input.categories ? resolveCategories(input.categories, summary) : undefined;
+  return {
+    ...(months ? { months } : {}),
+    ...(categories ? { categories } : {}),
+  };
+}
+
 export function createAnalyzeExpensesTool(source?: ExpenseDataSource, logger?: ApplicationLogger) {
   return tool(
     async (input): Promise<ExpenseAnalysisOutput> => analyzeExpenses(input, source, logger),
     {
       name: "analyzeExpenses",
-      description: "Run a deterministic, composable expense analysis. It filters normalized debit expenses, groups only by month, dayOfWeek, category, account, or exact description, then deterministically sums or counts, sorts, and optionally limits results. Description grouping retains exact ledger text; it never infers that variants are the same item. Use this instead of getExpenses whenever the user asks for grouped, ranked, top-N, repeated-item, or aggregated analysis. Do not calculate from raw transactions yourself.",
+      description: "Run a deterministic, composable expense analysis. Category/month sum analysis uses the Debit summary; transaction-level dimensions use normalized debit expenses. It groups only by month, dayOfWeek, category, account, or exact description, then deterministically sums or counts, sorts, and optionally limits results. Description grouping retains exact ledger text; it never infers that variants are the same item. Use this instead of getExpenses whenever the user asks for grouped, ranked, top-N, repeated-item, total, or aggregated analysis. Do not calculate from raw transactions yourself.",
       schema: analysisSchema,
     },
   );
@@ -215,7 +271,7 @@ function resolveMonths(requestedMonths: readonly string[], configuredMonths: rea
   return resolved;
 }
 
-function resolveCategories(requestedCategories: readonly string[], expenses: readonly GoogleSheetsExpense[]): string[] {
+function resolveCategories(requestedCategories: readonly string[], expenses: readonly { category: string }[]): string[] {
   const selection = resolveExpenseCategories(normalizeNonEmptyStrings(requestedCategories, "categories"), deriveExpenseCategories(expenses));
   if (selection.unknownCategories.length > 0) {
     throw new Error(`Unknown expense category: ${selection.unknownCategories.join(", ")}. Use a literal category from the current workbook vocabulary.`);

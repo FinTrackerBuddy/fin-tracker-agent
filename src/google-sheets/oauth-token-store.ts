@@ -113,7 +113,10 @@ export class GoogleOAuthTokenEndpoint implements OAuthTokenEndpoint {
     });
     const body: unknown = await response.json();
     if (!response.ok) {
-      throw new Error("Google OAuth token request failed. Run npm run google-auth -- --force.");
+      const providerCode = getOAuthProviderErrorCode(body);
+      throw new Error(
+        `Google OAuth token request failed with HTTP ${response.status}${providerCode ? ` (${providerCode})` : ""}. Run npm run google-auth -- --force.`,
+      );
     }
     return parseTokenResponse(body);
   }
@@ -199,6 +202,15 @@ function parseTokenResponse(value: unknown): GoogleOAuthTokens {
     token_type: isNonEmptyString(value.token_type) ? value.token_type : undefined,
     scope: isNonEmptyString(value.scope) ? value.scope : undefined,
   });
+}
+
+/** Google error codes are stable diagnostics; response text can be sensitive. */
+function getOAuthProviderErrorCode(value: unknown): string | undefined {
+  if (!isRecord(value) || !isNonEmptyString(value.error)) {
+    return undefined;
+  }
+  const code = value.error.trim();
+  return /^[a-z_]{1,64}$/.test(code) ? code : undefined;
 }
 
 function parseTokens(value: unknown): GoogleOAuthTokens {

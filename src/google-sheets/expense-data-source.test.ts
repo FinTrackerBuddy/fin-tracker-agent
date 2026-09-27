@@ -33,6 +33,18 @@ test("maps only debit rows from the monthly ledger into expenses", async () => {
   ]);
 });
 
+test("exposes summary totals without reading the monthly ledger", async () => {
+  const source = new GoogleSheetsExpenseDataSource({
+    configuration: { monthTabs: ["April"] },
+    ledgerReader: { async readMonthlyLedger() { throw new Error("ledger should not be read"); } },
+    debitSummaryReader: {
+      async readDebitSummary() { return [{ category: "Food", month: "April", amount: 120 }]; },
+    },
+  });
+
+  assert.deepEqual(await source.listDebitSummary(), [{ category: "Food", month: "April", amount: 120 }]);
+});
+
 test("requires local workbook configuration before creating the OAuth-backed source", async () => {
   await assert.rejects(
     createGoogleSheetsExpenseDataSourceFromEnvironment({}),

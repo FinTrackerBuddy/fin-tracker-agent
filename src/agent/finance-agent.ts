@@ -15,6 +15,7 @@ import { createAnalyzeExpensesTool } from "../tools/analyze-expenses.js";
 import {
   consoleApplicationLogger,
   formatCurrency,
+  summarizeError,
   summarizeQuery,
   type ApplicationLogger,
   withLogDetails,
@@ -75,7 +76,16 @@ export class FinanceAgent {
     logger.info("Agent", "Execution started", { query: summarizeQuery(userMessage) });
     const dateContext = formatFinanceDateContext(getFinanceDateContext(this.clock.now()));
     logger.info("Agent", "Loading expense category vocabulary");
-    const knownCategories = await this.categoryVocabulary.listCategories();
+    let knownCategories: readonly string[];
+    try {
+      knownCategories = await this.categoryVocabulary.listCategories();
+    } catch (error) {
+      logger.error("Error", "Expense category vocabulary loading failed", {
+        errorType: getErrorType(error),
+        errorMessage: summarizeError(error),
+      });
+      throw error;
+    }
     logger.info("Agent", "Expense category vocabulary loaded", { categoryCount: knownCategories.length });
     const messages: BaseMessage[] = [
       new SystemMessage(
@@ -83,7 +93,7 @@ export class FinanceAgent {
           + dateContext
           + "\n\nAvailable expense categories in the workbook:\n"
           + knownCategories.map((category) => `- ${category}`).join("\n")
-          + "\n\nWhen a user asks about a broad spending concept, select one or more relevant existing categories from this vocabulary. Never invent a category. Use literal workbook labels in tool categories. If the user's wording exactly matches a category, prefer it. Include multiple categories only when they are directly relevant; do not include loosely associated categories.\n\nCash is a payment-method/account filter, not an expense category. For requests about cash spending, use paymentMethod: 'cash'. This includes owner-prefixed cash accounts such as Pratheek Cash and Arya Cash; never reject a cash request because 'Cash' is absent from the expense-category list.\n\nUse analyzeExpenses for any grouped, ranked, top-N, weekday, category, account, monthly progression, repeated-item, or aggregated spending question. It accepts only a closed data specification: filters; groupBy month, dayOfWeek, category, account, or description; aggregation sum or count; a matching total/count sort; and optional limit. Description grouping returns exact ledger text and never assumes free-text variants are the same item. Put literal category labels in filter.categories. Only use filter.descriptions when the user has supplied an exact description; do not invent or normalize descriptions. The tool performs all filtering, grouping, aggregation, sorting, and calculations—never derive those values from getExpenses rows yourself. Use getExpenses only for necessary transaction-level detail. Use compareSpendingPeriods for explicitly ordered period totals, comparisons, increases/decreases, differences, or percentages. For category- or exact-description-filtered period comparison, call compareSpendingPeriods once with the filter and requested periods; it deterministically returns filtered totals and sequential comparisons. Never call an unfiltered comparison after a category-filtered request or any other filtered request. Preserve the user's requested period order; for a sequence of months compare adjacent calendar transitions only (for example August → September → October), never every pair. The date context above resolves relative terms such as last month and this month.",
+          + "\n\nWhen a user asks about a broad spending concept, select one or more relevant existing categories from this vocabulary. Never invent a category. Use literal workbook labels in tool categories. If the user's wording exactly matches a category, prefer it. Include multiple categories only when they are directly relevant; do not include loosely associated categories.\n\nCash is a payment-method/account filter, not an expense category. For requests about cash spending, use paymentMethod: 'cash'. This includes owner-prefixed cash accounts such as Pratheek Cash and Arya Cash; never reject a cash request because 'Cash' is absent from the expense-category list.\n\nUse analyzeExpenses for any grouped, ranked, top-N, weekday, category, account, monthly progression, repeated-item, total, or other aggregated spending question. It accepts only a closed data specification: filters; groupBy month, dayOfWeek, category, account, or description; aggregation sum or count; a matching total/count sort; and optional limit. Description grouping returns exact ledger text and never assumes free-text variants are the same item. Put literal category labels in filter.categories. Only use filter.descriptions when the user has supplied an exact description; do not invent or normalize descriptions. The tool performs all filtering, grouping, aggregation, sorting, and calculations—never derive those values from getExpenses rows yourself. Use getExpenses only when the user needs individual transaction-level detail. Use compareSpendingPeriods for explicitly ordered period totals, comparisons, increases/decreases, differences, or percentages. For category- or exact-description-filtered period comparison, call compareSpendingPeriods once with the filter and requested periods; it deterministically returns filtered totals and sequential comparisons. Never call an unfiltered comparison after a category-filtered request or any other filtered request. Preserve the user's requested period order; for a sequence of months compare adjacent calendar transitions only (for example August → September → October), never every pair. The date context above resolves relative terms such as last month and this month.",
       ),
       ...conversationHistory.flatMap((turn) => [
         new HumanMessage(turn.query),
@@ -94,7 +104,10 @@ export class FinanceAgent {
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const llmStartedAt = performance.now();
-      logger.info("LLM", "Invoking model", { attempt: attempt + 1 });
+      logger.info("LLM", "Invoking model", {
+        attempt: attempt + 1,
+        debugQuery: summarizeQuery(userMessage),
+      });
       let response;
       try {
         response = await this.llm.sendMessagesWithTools(messages, tools);
@@ -103,6 +116,7 @@ export class FinanceAgent {
           attempt: attempt + 1,
           durationMs: elapsedMilliseconds(llmStartedAt),
           errorType: getErrorType(error),
+          errorMessage: summarizeError(error),
         });
         throw error;
       }
@@ -159,6 +173,7 @@ export class FinanceAgent {
             tool: toolCall.name,
             durationMs: elapsedMilliseconds(toolStartedAt),
             errorType: getErrorType(error),
+            errorMessage: summarizeError(error),
           });
           throw error;
         }

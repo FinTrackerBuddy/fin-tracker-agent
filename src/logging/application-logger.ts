@@ -44,6 +44,27 @@ export function summarizeQuery(query: string): string {
   return redactSensitiveText(summary);
 }
 
+/**
+ * Produces a bounded diagnostic suitable for application logs. Error details
+ * are useful for operations, but provider and OAuth errors can occasionally
+ * echo credentials, so they use the same redaction path as other log text.
+ */
+export function summarizeError(error: unknown): string {
+  const messages: string[] = [];
+  let current: unknown = error;
+
+  for (let depth = 0; depth < 3 && current instanceof Error; depth += 1) {
+    if (current.message.trim()) {
+      messages.push(current.message.trim());
+    }
+    current = getErrorCause(current);
+  }
+
+  const summary = messages.length > 0 ? [...new Set(messages)].join(" Caused by: ") : "Unknown error.";
+  const bounded = summary.length <= 500 ? summary : `${summary.slice(0, 497)}...`;
+  return redactSensitiveText(bounded);
+}
+
 export function formatCurrency(amount: number): string {
   return `₹${amount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
@@ -69,5 +90,13 @@ function formatValue(value: Exclude<LogDetails[string], undefined>): string {
 }
 
 function redactSensitiveText(value: string): string {
-  return value.replace(/(?:sk-|AIza|ya29\.|Bearer\s+)[A-Za-z0-9._-]+/gi, "[REDACTED]");
+  return value
+    .replace(/(?:sk-|AIza|ya29\.|Bearer\s+)[A-Za-z0-9._-]+/gi, "[REDACTED]")
+    .replace(/\b(api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|authorization)\s*[=:]\s*["']?[^,\s"']+/gi, "$1=[REDACTED]")
+    .replace(/([?&](?:key|api_key|access_token|refresh_token)=[^&#\s]*)/gi, "[REDACTED]");
+}
+
+function getErrorCause(error: Error): unknown {
+  const candidate = error as Error & { cause?: unknown };
+  return candidate.cause;
 }

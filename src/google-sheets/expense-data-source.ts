@@ -7,6 +7,10 @@ import {
   type ExpenseLedgerTransaction,
 } from "./ledger-reader.js";
 import {
+  GoogleSheetsDebitSummaryReader,
+  type DebitSummaryAmount,
+} from "./debit-summary-reader.js";
+import {
   ReadOnlyGoogleSheetsApiClient,
 } from "./sheets-api.js";
 import { createStoredGoogleOAuthAccessTokenProvider } from "./oauth-token-store.js";
@@ -32,11 +36,14 @@ export interface GoogleSheetsExpense {
 export interface ExpenseDataSource {
   readonly monthTabs: readonly string[];
   listExpenses(): Promise<GoogleSheetsExpense[]>;
+  /** Available in production for category/month monetary totals only. */
+  listDebitSummary?(): Promise<DebitSummaryAmount[]>;
 }
 
 export interface GoogleSheetsExpenseDataSourceDependencies {
   configuration: Pick<GoogleSheetsLedgerConfiguration, "monthTabs">;
   ledgerReader: Pick<GoogleSheetsLedgerReader, "readMonthlyLedger">;
+  debitSummaryReader?: Pick<GoogleSheetsDebitSummaryReader, "readDebitSummary">;
 }
 
 export class GoogleSheetsExpenseDataSource implements ExpenseDataSource {
@@ -62,6 +69,13 @@ export class GoogleSheetsExpenseDataSource implements ExpenseDataSource {
         account: transaction.account,
       }));
   }
+
+  public async listDebitSummary(): Promise<DebitSummaryAmount[]> {
+    if (!this.dependencies.debitSummaryReader) {
+      throw new Error("Debit summary reader is not configured.");
+    }
+    return this.dependencies.debitSummaryReader.readDebitSummary();
+  }
 }
 
 /**
@@ -76,8 +90,9 @@ export async function createGoogleSheetsExpenseDataSourceFromEnvironment(
   const accessTokenProvider = await createStoredGoogleOAuthAccessTokenProvider();
   const sheetsApi = new ReadOnlyGoogleSheetsApiClient(accessTokenProvider, fetch, logger);
   const ledgerReader = new GoogleSheetsLedgerReader(configuration, sheetsApi);
+  const debitSummaryReader = new GoogleSheetsDebitSummaryReader(configuration, sheetsApi);
 
-  return new GoogleSheetsExpenseDataSource({ configuration, ledgerReader });
+  return new GoogleSheetsExpenseDataSource({ configuration, ledgerReader, debitSummaryReader });
 }
 
 function isDebitTransaction(

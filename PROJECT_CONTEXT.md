@@ -26,10 +26,10 @@ Deterministic tools
     ↓
 ExpenseDataSource
     ↓
-Google Sheets monthly ledger
+Debit summary for category/month totals; monthly ledgers for transaction detail
 ```
 
-`FinanceAgent` supplies date/category context plus bounded relevant session turns, selects and executes tools, and turns structured results into a natural-language answer. The provider layer owns LangChain OpenAI/Gemini construction. Tools own deterministic validation, retrieval, and financial calculation; they do not construct LLM prompts. Google OAuth, Sheets API access, ledger parsing, and expense normalization are isolated under `src/google-sheets/`.
+`FinanceAgent` supplies date/category context plus bounded relevant session turns, selects and executes tools, and turns structured results into a natural-language answer. The provider layer owns LangChain OpenAI/Gemini construction. Tools own deterministic validation, retrieval, and financial calculation; they do not construct LLM prompts. Category/month monetary sums use the formula-backed `Debit summary`; individual transaction questions still read monthly ledgers. Google OAuth, Sheets API access, summary/ledger parsing, and expense normalization are isolated under `src/google-sheets/`.
 
 ## 4. Repository structure
 
@@ -112,7 +112,7 @@ The API uses a static bearer token loaded from ignored local environment configu
 
 ## 10. Logging and observability
 
-The console logger emits scoped `HTTP`, `Agent`, `LLM`, `Tool`, `GoogleSheets`, and `Error` events. Every request receives a UUID `queryId`, propagated through HTTP, agent, LLM, tools, and relevant Sheets events. LLM and tool execution record millisecond durations.
+The console logger emits scoped `HTTP`, `Agent`, `LLM`, `Tool`, `GoogleSheets`, and `Error` events. Every request receives a UUID `queryId`, propagated through HTTP, agent, LLM, tools, and relevant Sheets events. HTTP terminal events measure the complete request lifecycle in milliseconds; LLM and tool execution record their own durations, and each LLM invocation also records the bounded, redacted user query as `debugQuery`. Failed HTTP, category-vocabulary, LLM, and tool events also include a bounded, redacted underlying error message and up to two nested causes.
 
 Logs deliberately exclude API keys, bearer tokens, OAuth tokens, authorization headers, credentials, raw Sheets rows, transaction descriptions, and full prompts. Tool logs use bounded arguments and aggregate summaries.
 

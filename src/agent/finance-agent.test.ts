@@ -48,6 +48,33 @@ test("returns a stable user-facing response without a tool call", async () => {
   });
 });
 
+test("logs a redacted LLM failure diagnostic", async () => {
+  const logger = new RecordedLogger();
+  const agent = new FinanceAgent({
+    async sendMessagesWithTools(): Promise<AIMessage> {
+      throw new Error("Model request failed: api_key=sk-secret-value");
+    },
+  }, undefined, undefined, expenseCategoryVocabulary, logger);
+
+  await assert.rejects(agent.respond("How much did I spend?", "llm-failure-id"));
+
+  const failureLog = logger.entries.find((entry) => entry.includes("LLM invocation failed"));
+  assert.match(failureLog ?? "", /Model request failed/);
+  assert.doesNotMatch(failureLog ?? "", /sk-secret-value/);
+  assert.match(failureLog ?? "", /api_key=\[REDACTED\]/);
+});
+
+test("logs the user query as debugQuery during each LLM invocation", async () => {
+  const logger = new RecordedLogger();
+  const agent = new FinanceAgent({
+    async sendMessagesWithTools(): Promise<AIMessage> { return new AIMessage("Done."); },
+  }, undefined, undefined, expenseCategoryVocabulary, logger);
+
+  await agent.respond("How much did I spend in August?", "debug-query-id");
+
+  assert.match(logger.entries.join("\n"), /LLM:Invoking model:.*debugQuery.*How much did I spend in August/);
+});
+
 test("supplies bounded session history before the current follow-up", async () => {
   const calls: BaseMessage[][] = [];
   const agent = new FinanceAgent({

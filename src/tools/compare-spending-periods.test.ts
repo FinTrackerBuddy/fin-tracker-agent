@@ -254,3 +254,27 @@ test("exposes the comparison through the stable LangChain tool", async () => {
     { from: "August", to: "September", difference: 50, percentageChange: 50 },
   ]);
 });
+
+test("uses Debit summary for period totals unless exact descriptions require ledger detail", async () => {
+  const summarySource: ExpenseDataSource = {
+    monthTabs: ["August", "September"],
+    async listExpenses() { throw new Error("ledger should not be read"); },
+    async listDebitSummary() {
+      return [
+        { category: "Food", month: "August", amount: 100 },
+        { category: "Travel", month: "August", amount: 200 },
+        { category: "Food", month: "September", amount: 150 },
+      ];
+    },
+  };
+  const result = await compareSpendingPeriods({
+    categories: ["food"],
+    periods: [{ label: "August", months: ["August"] }, { label: "September", months: ["September"] }],
+  }, summarySource);
+
+  assert.deepEqual(result, {
+    categories: ["Food"], total: 250,
+    periods: [{ label: "August", months: ["August"], total: 100 }, { label: "September", months: ["September"], total: 150 }],
+    comparisons: [{ from: "August", to: "September", difference: 50, percentageChange: 50 }],
+  });
+});

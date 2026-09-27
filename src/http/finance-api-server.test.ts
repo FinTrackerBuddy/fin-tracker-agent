@@ -151,7 +151,7 @@ test("POST /api/query logs authentication and request lifecycle events without l
   assert.match(logger.entries[0] ?? "", /^HTTP:Request received:.*"method":"POST".*"queryId":".+"/);
   assert.match(logger.entries[1] ?? "", /^HTTP:API authentication succeeded:.*"queryId":".+"/);
   assert.match(logger.entries[2] ?? "", /^HTTP:Query received:.*"query":"How much did I spend\?".*"queryId":".+"/);
-  assert.match(logger.entries[3] ?? "", /^HTTP:Request completed:.*"status":200.*"queryId":".+"/);
+  assert.match(logger.entries[3] ?? "", /^HTTP:Request completed:.*"status":200.*"durationMs":\d+.*"queryId":".+"/);
   assert.doesNotMatch(logger.entries.join("\n"), /test-api-auth-token|authorization/i);
 });
 
@@ -188,9 +188,10 @@ test("POST /api/query rejects a missing body, malformed JSON, and missing or emp
 });
 
 test("POST /api/query returns a safe 500 response when the agent fails", async () => {
+  const logger = new RecordedLogger();
   await withServer({
     async respond() {
-      throw new Error("provider key is secret");
+      throw new Error("Provider rejected request: api_key=sk-secret-value");
     },
   }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/query`, {
@@ -201,5 +202,10 @@ test("POST /api/query returns a safe 500 response when the agent fails", async (
 
     assert.equal(response.status, 500);
     assert.deepEqual(await response.json(), { error: "Unable to process finance query." });
-  });
+  }, logger);
+
+  const failureLog = logger.entries.find((entry) => entry.includes("Finance API request failed"));
+  assert.match(failureLog ?? "", /Provider rejected request/);
+  assert.doesNotMatch(failureLog ?? "", /sk-secret-value/);
+  assert.match(failureLog ?? "", /api_key=\[REDACTED\]/);
 });

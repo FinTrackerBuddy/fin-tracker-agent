@@ -129,3 +129,25 @@ test("exposes the same closed specification through one LangChain tool", async (
   });
   assert.deepEqual(result.results, [{ key: "Groceries", total: 1000 }]);
 });
+
+test("uses Debit summary for category/month sum analysis without reading transactions", async () => {
+  const summarySource: ExpenseDataSource = {
+    monthTabs: ["August", "September"],
+    async listExpenses() { throw new Error("ledger should not be read"); },
+    async listDebitSummary() {
+      return [
+        { category: "Food", month: "August", amount: 100 },
+        { category: "Travel", month: "August", amount: 200 },
+        { category: "Food", month: "September", amount: 150 },
+      ];
+    },
+  };
+  const result = await analyzeExpenses({
+    filter: { categories: ["food"] }, groupBy: "month", aggregation: "sum",
+  }, summarySource);
+
+  assert.deepEqual(result, {
+    filter: { categories: ["Food"] }, groupBy: "month", aggregation: "sum",
+    results: [{ key: "August", total: 100 }, { key: "September", total: 150 }],
+  });
+});

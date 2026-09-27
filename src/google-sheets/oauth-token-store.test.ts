@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   FileGoogleOAuthTokenStore,
+  GoogleOAuthTokenEndpoint,
   StoredGoogleOAuthAccessTokenProvider,
   loadInstalledGoogleOAuthCredentials,
   type GoogleOAuthTokenStore,
@@ -110,6 +111,18 @@ test("reports missing, invalid, and unrefreshable local credentials clearly", as
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("reports a safe Google OAuth refresh rejection diagnostic", async () => {
+  const endpoint = new GoogleOAuthTokenEndpoint(credentials, async () => new Response(JSON.stringify({
+    error: "invalid_grant",
+    error_description: "A token-specific provider detail that must not be logged.",
+  }), { status: 400 }));
+
+  await assert.rejects(
+    endpoint.request(new URLSearchParams({ grant_type: "refresh_token" })),
+    /HTTP 400 \(invalid_grant\).*google-auth/i,
+  );
 });
 
 class MemoryTokenStore implements GoogleOAuthTokenStore {

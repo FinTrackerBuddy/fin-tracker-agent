@@ -78,7 +78,9 @@ export class CachedExpenseCategoryVocabulary
     }
 
     const source = await this.sourceFactory();
-    const categories = deriveExpenseCategories(await source.listExpenses());
+    const categories = source.listDebitSummary
+      ? deriveExpenseCategories(await source.listDebitSummary())
+      : deriveExpenseCategories(await source.listExpenses());
     this.cachedCategories = categories;
     this.expiresAt = this.now() + this.cacheTtlMilliseconds;
     return categories;

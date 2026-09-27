@@ -10,6 +10,7 @@ import {
 import { isAuthorizedBearerToken } from "./api-auth.js";
 import {
   consoleApplicationLogger,
+  summarizeError,
   summarizeQuery,
   type ApplicationLogger,
   withLogDetails,
@@ -28,6 +29,7 @@ export function createFinanceApiServer(
   conversationMemory: SessionConversationMemory = new InMemorySessionConversationMemory(),
 ): Server {
   return createServer(async (request, response) => {
+    const requestStartedAt = performance.now();
     const queryId = randomUUID();
     const requestLogger = withLogDetails(logger, { queryId });
     const pathname = new URL(
@@ -38,13 +40,13 @@ export function createFinanceApiServer(
     requestLogger.info("HTTP", "Request received", { method: request.method ?? "UNKNOWN", path: pathname });
 
     if (request.method !== "POST" || pathname !== "/api/query") {
-      requestLogger.info("HTTP", "Request completed", { status: 404 });
+      requestLogger.info("HTTP", "Request completed", { status: 404, durationMs: elapsedMilliseconds(requestStartedAt) });
       sendJson(response, 404, { error: "Not found." });
       return;
     }
 
     if (!isAuthorizedBearerToken(request.headers.authorization, apiAuthToken)) {
-      requestLogger.info("HTTP", "API authentication failed", { status: 401 });
+      requestLogger.info("HTTP", "API authentication failed", { status: 401, durationMs: elapsedMilliseconds(requestStartedAt) });
       sendJson(response, 401, { error: "Unauthorized" });
       return;
     }
@@ -55,7 +57,7 @@ export function createFinanceApiServer(
       const query = getQuery(body);
 
       if (query === undefined) {
-        requestLogger.info("HTTP", "Request rejected", { status: 400, reason: "missing_query" });
+        requestLogger.info("HTTP", "Request rejected", { status: 400, reason: "missing_query", durationMs: elapsedMilliseconds(requestStartedAt) });
         sendJson(response, 400, { error: "Request body must include a non-empty query." });
         return;
       }
@@ -63,7 +65,7 @@ export function createFinanceApiServer(
       requestLogger.info("HTTP", "Query received", { query: summarizeQuery(query) });
       const conversationId = getConversationId(body);
       if (conversationId === null) {
-        requestLogger.info("HTTP", "Request rejected", { status: 400, reason: "invalid_conversation_id" });
+        requestLogger.info("HTTP", "Request rejected", { status: 400, reason: "invalid_conversation_id", durationMs: elapsedMilliseconds(requestStartedAt) });
         sendJson(response, 400, { error: "conversationId must be a 1-128 character identifier containing only letters, numbers, hyphens, or underscores." });
         return;
       }
@@ -78,18 +80,30 @@ export function createFinanceApiServer(
         conversationMemory.remember(conversationId, { query, response: result.text });
       }
       sendJson(response, 200, result);
-      requestLogger.info("HTTP", "Request completed", { status: 200, responseCharacters: result.text.length });
+      requestLogger.info("HTTP", "Request completed", {
+        status: 200,
+        responseCharacters: result.text.length,
+        durationMs: elapsedMilliseconds(requestStartedAt),
+      });
     } catch (error) {
       if (error instanceof InvalidRequestBodyError) {
-        requestLogger.info("HTTP", "Request rejected", { status: 400, reason: "invalid_body" });
+        requestLogger.info("HTTP", "Request rejected", { status: 400, reason: "invalid_body", durationMs: elapsedMilliseconds(requestStartedAt) });
         sendJson(response, 400, { error: error.message });
         return;
       }
 
-      requestLogger.error("Error", "Finance API request failed", { errorType: getErrorType(error) });
+      requestLogger.error("Error", "Finance API request failed", {
+        durationMs: elapsedMilliseconds(requestStartedAt),
+        errorType: getErrorType(error),
+        errorMessage: summarizeError(error),
+      });
       sendJson(response, 500, { error: "Unable to process finance query." });
     }
   });
+}
+
+function elapsedMilliseconds(startedAt: number): number {
+  return Math.round(performance.now() - startedAt);
 }
 
 async function readJsonBody(request: IncomingMessage): Promise<unknown> {

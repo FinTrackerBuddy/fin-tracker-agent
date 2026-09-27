@@ -30,6 +30,8 @@ export interface ExpenseAnalysisFilter {
   endDate?: string;
   /** Literal current-workbook category labels, canonicalized before analysis. */
   categories?: string[];
+  /** Literal current-workbook categories to exclude after any inclusion filter. */
+  excludeCategories?: string[];
   /** Exact ledger account labels, matched case-insensitively after trimming. */
   accounts?: string[];
   /** Exact ledger descriptions. Variants are deliberately not normalized or merged. */
@@ -46,6 +48,8 @@ export interface ExpenseAnalysisSpec {
   sort?: { field: ExpenseSortField; direction: SortDirection };
   /** Bounded top-N result count. */
   limit?: number;
+  /** Return a deterministic average of monthly sum totals; requires groupBy month and sum. */
+  averageMonthly?: boolean;
 }
 
 export interface ExpenseAnalysisResult {
@@ -59,6 +63,7 @@ export interface ExpenseAnalysisOutput {
   groupBy?: ExpenseGroupDimension;
   aggregation: ExpenseAggregation;
   results: ExpenseAnalysisResult[];
+  averageMonthly?: { total: number; monthCount: number; average: number };
   /** Omitted for summary-backed monetary analysis because the summary has no transaction counts. */
   matchingExpenseCount?: number;
 }
@@ -70,6 +75,7 @@ const analysisSchema = z.object({
     startDate: z.string().optional(),
     endDate: z.string().optional(),
     categories: z.array(z.string()).min(1).optional(),
+    excludeCategories: z.array(z.string()).min(1).optional(),
     accounts: z.array(z.string()).min(1).optional(),
     descriptions: z.array(z.string()).min(1).optional(),
     paymentMethod: z.enum(["cash"]).optional(),
@@ -81,6 +87,7 @@ const analysisSchema = z.object({
     direction: z.enum(["asc", "desc"]),
   }).optional(),
   limit: z.number().int().min(1).max(100).optional(),
+  averageMonthly: z.boolean().optional(),
 });
 
 /**
@@ -95,6 +102,7 @@ export async function analyzeExpenses(
 ): Promise<ExpenseAnalysisOutput> {
   const specification = analysisSchema.parse(input) as ExpenseAnalysisSpec;
   validateSortForAggregation(specification);
+  validateAverageMonthly(specification);
   const expenseSource = source
     ?? await createGoogleSheetsExpenseDataSourceFromEnvironment(process.env, logger);
   if (canUseDebitSummary(specification) && expenseSource.listDebitSummary) {
@@ -123,6 +131,9 @@ export async function analyzeExpenses(
     ...(specification.groupBy ? { groupBy: specification.groupBy } : {}),
     aggregation: specification.aggregation,
     results: specification.limit === undefined ? results : results.slice(0, specification.limit),
+    ...(specification.averageMonthly
+      ? { averageMonthly: calculateMonthlyAverage(results, filter?.months ?? expenseSource.monthTabs) }
+      : {}),
     matchingExpenseCount: matchingExpenses.length,
   };
 }
@@ -149,6 +160,7 @@ function analyzeDebitSummary(
   for (const amount of summary) {
     if (filter?.months && !filter.months.includes(amount.month)) continue;
     if (filter?.categories && !filter.categories.some((category) => normalizeExpenseCategory(category) === normalizeExpenseCategory(amount.category))) continue;
+    if (filter?.excludeCategories?.some((category) => normalizeExpenseCategory(category) === normalizeExpenseCategory(amount.category))) continue;
     const key = specification.groupBy === "month"
       ? amount.month
       : specification.groupBy === "category" ? amount.category : "All expenses";
@@ -161,6 +173,9 @@ function analyzeDebitSummary(
     ...(specification.groupBy ? { groupBy: specification.groupBy } : {}),
     aggregation: "sum",
     results: specification.limit === undefined ? results : results.slice(0, specification.limit),
+    ...(specification.averageMonthly
+      ? { averageMonthly: calculateMonthlyAverage(results, filter?.months ?? configuredMonths) }
+      : {}),
   };
 }
 
@@ -172,9 +187,12 @@ function resolveSummaryFilter(
   if (!input) return undefined;
   const months = input.months ? resolveMonths(input.months, configuredMonths) : undefined;
   const categories = input.categories ? resolveCategories(input.categories, summary) : undefined;
+  const excludeCategories = input.excludeCategories ? resolveCategories(input.excludeCategories, summary) : undefined;
+  rejectOverlappingCategories(categories, excludeCategories);
   return {
     ...(months ? { months } : {}),
     ...(categories ? { categories } : {}),
+    ...(excludeCategories ? { excludeCategories } : {}),
   };
 }
 
@@ -183,7 +201,7 @@ export function createAnalyzeExpensesTool(source?: ExpenseDataSource, logger?: A
     async (input): Promise<ExpenseAnalysisOutput> => analyzeExpenses(input, source, logger),
     {
       name: "analyzeExpenses",
-      description: "Run a deterministic, composable expense analysis. Category/month sum analysis uses the Debit summary; transaction-level dimensions use normalized debit expenses. It groups only by month, dayOfWeek, category, account, or exact description, then deterministically sums or counts, sorts, and optionally limits results. Description grouping retains exact ledger text; it never infers that variants are the same item. Use this instead of getExpenses whenever the user asks for grouped, ranked, top-N, repeated-item, total, or aggregated analysis. Do not calculate from raw transactions yourself.",
+      description: "Run a deterministic, composable expense analysis. Category/month sum analysis uses the Debit summary; transaction-level dimensions use normalized debit expenses. It groups only by month, dayOfWeek, category, account, or exact description, then deterministically sums or counts, sorts, and optionally limits results. Use filter.excludeCategories for exclusions. For an average monthly expense, use groupBy month, aggregation sum, averageMonthly true, and the exact requested months; the tool returns the deterministic average without LLM arithmetic. Description grouping retains exact ledger text; it never infers that variants are the same item. Use this instead of getExpenses whenever the user asks for grouped, ranked, top-N, repeated-item, total, or aggregated analysis. Do not calculate from raw transactions yourself.",
       schema: analysisSchema,
     },
   );
@@ -208,6 +226,8 @@ function resolveFilter(
   }
   const months = input.months ? resolveMonths(input.months, configuredMonths) : undefined;
   const categories = input.categories ? resolveCategories(input.categories, expenses) : undefined;
+  const excludeCategories = input.excludeCategories ? resolveCategories(input.excludeCategories, expenses) : undefined;
+  rejectOverlappingCategories(categories, excludeCategories);
   const accounts = input.accounts ? normalizeNonEmptyStrings(input.accounts, "accounts") : undefined;
   const descriptions = input.descriptions ? resolveDescriptions(input.descriptions, expenses) : undefined;
   return {
@@ -216,6 +236,7 @@ function resolveFilter(
     ...(startDate ? { startDate } : {}),
     ...(endDate ? { endDate } : {}),
     ...(categories ? { categories } : {}),
+    ...(excludeCategories ? { excludeCategories } : {}),
     ...(accounts ? { accounts } : {}),
     ...(descriptions ? { descriptions } : {}),
     ...(input.paymentMethod ? { paymentMethod: input.paymentMethod } : {}),
@@ -229,6 +250,7 @@ function matchesFilter(expense: GoogleSheetsExpense, filter: ExpenseAnalysisOutp
   if (filter.startDate && expense.date < filter.startDate) return false;
   if (filter.endDate && expense.date > filter.endDate) return false;
   if (filter.categories && !filter.categories.some((category) => normalizeExpenseCategory(category) === normalizeExpenseCategory(expense.category))) return false;
+  if (filter.excludeCategories?.some((category) => normalizeExpenseCategory(category) === normalizeExpenseCategory(expense.category))) return false;
   if (filter.accounts && !filter.accounts.some((account) => normalizeText(account) === normalizeText(expense.account ?? ""))) return false;
   if (filter.descriptions && !filter.descriptions.includes(expense.description)) return false;
   return !filter.paymentMethod || /\bcash\b/i.test(expense.account ?? "");
@@ -258,6 +280,30 @@ function sortResults(results: ExpenseAnalysisResult[], sort: ExpenseAnalysisSpec
 function validateSortForAggregation(specification: ExpenseAnalysisSpec): void {
   if (specification.sort && specification.sort.field !== (specification.aggregation === "sum" ? "total" : "count")) {
     throw new Error(`sort.field must be ${specification.aggregation === "sum" ? "total" : "count"} when aggregation is ${specification.aggregation}.`);
+  }
+}
+
+function validateAverageMonthly(specification: ExpenseAnalysisSpec): void {
+  if (specification.averageMonthly && (specification.aggregation !== "sum" || specification.groupBy !== "month")) {
+    throw new Error("averageMonthly requires groupBy month and aggregation sum.");
+  }
+}
+
+function calculateMonthlyAverage(
+  results: readonly ExpenseAnalysisResult[],
+  months: readonly string[],
+): { total: number; monthCount: number; average: number } {
+  const totalByMonth = new Map(results.map((result) => [result.key, result.total ?? 0]));
+  const total = months.reduce((sum, month) => sum + (totalByMonth.get(month) ?? 0), 0);
+  return { total, monthCount: months.length, average: months.length === 0 ? 0 : total / months.length };
+}
+
+function rejectOverlappingCategories(
+  categories: readonly string[] | undefined,
+  excludeCategories: readonly string[] | undefined,
+): void {
+  if (categories?.some((category) => excludeCategories?.some((excluded) => normalizeExpenseCategory(excluded) === normalizeExpenseCategory(category)))) {
+    throw new Error("categories and excludeCategories must not overlap.");
   }
 }
 

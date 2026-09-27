@@ -75,6 +75,62 @@ test("logs the user query as debugQuery during each LLM invocation", async () =>
   assert.match(logger.entries.join("\n"), /LLM:Invoking model:.*debugQuery.*How much did I spend in August/);
 });
 
+test("uses one summary-backed analysis call for an excluded-category monthly average", async () => {
+  const calls: BaseMessage[][] = [];
+  let summaryReads = 0;
+  const categories = {
+    async listCategories(): Promise<readonly string[]> {
+      return ["Home loan", "Income Tax", "Investments", "Transfer sent", "Groceries"];
+    },
+  };
+  const summarySource = {
+    monthTabs: ["April", "May", "June", "July", "August", "September"],
+    async listExpenses() { throw new Error("ledger should not be read"); },
+    async listDebitSummary() {
+      summaryReads += 1;
+      return [
+        { category: "Groceries", month: "April", amount: 100 },
+        { category: "Home loan", month: "April", amount: 900 },
+        { category: "Groceries", month: "May", amount: 200 },
+        { category: "Investments", month: "May", amount: 800 },
+        { category: "Groceries", month: "June", amount: 300 },
+        { category: "Income Tax", month: "June", amount: 700 },
+        { category: "Groceries", month: "July", amount: 400 },
+        { category: "Transfer sent", month: "July", amount: 600 },
+        { category: "Groceries", month: "August", amount: 500 },
+        { category: "Groceries", month: "September", amount: 600 },
+      ];
+    },
+  };
+  const agent = new FinanceAgent({
+    async sendMessagesWithTools(messages): Promise<AIMessage> {
+      calls.push(messages as BaseMessage[]);
+      if (calls.length === 1) {
+        return new AIMessage({ content: "", tool_calls: [{
+          id: "monthly-average", name: "analyzeExpenses", args: {
+            filter: {
+              months: ["April", "May", "June", "July", "August", "September"],
+              excludeCategories: ["home LOAN", "transfer SENT", "investments", "income tax"],
+            },
+            groupBy: "month", aggregation: "sum", averageMonthly: true,
+          },
+        }] });
+      }
+      return new AIMessage("Your average monthly expense is ₹350.");
+    },
+  }, undefined, { now: () => new Date("2026-09-27T12:00:00.000Z") }, categories, undefined, undefined,
+  createAnalyzeExpensesTool(summarySource));
+
+  assert.deepEqual(await agent.respond("What is my average overall monthly expense (based on number of months already passed) - exclude home loan, transfer sent, investments, income tax"), {
+    text: "Your average monthly expense is ₹350.",
+  });
+  assert.equal(calls.length, 2);
+  assert.equal(summaryReads, 1);
+  const toolMessage = calls[1]?.find((message) => message instanceof ToolMessage);
+  assert.ok(toolMessage);
+  assert.deepEqual(JSON.parse(toolMessage.content.toString()).averageMonthly, { total: 2100, monthCount: 6, average: 350 });
+});
+
 test("supplies bounded session history before the current follow-up", async () => {
   const calls: BaseMessage[][] = [];
   const agent = new FinanceAgent({

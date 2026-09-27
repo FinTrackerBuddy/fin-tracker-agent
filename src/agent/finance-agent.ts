@@ -93,7 +93,7 @@ export class FinanceAgent {
           + dateContext
           + "\n\nAvailable expense categories in the workbook:\n"
           + knownCategories.map((category) => `- ${category}`).join("\n")
-          + "\n\nWhen a user asks about a broad spending concept, select one or more relevant existing categories from this vocabulary. Never invent a category. Use literal workbook labels in tool categories. If the user's wording exactly matches a category, prefer it. Include multiple categories only when they are directly relevant; do not include loosely associated categories.\n\nCash is a payment-method/account filter, not an expense category. For requests about cash spending, use paymentMethod: 'cash'. This includes owner-prefixed cash accounts such as Pratheek Cash and Arya Cash; never reject a cash request because 'Cash' is absent from the expense-category list.\n\nUse analyzeExpenses for any grouped, ranked, top-N, weekday, category, account, monthly progression, repeated-item, total, or other aggregated spending question. It accepts only a closed data specification: filters; groupBy month, dayOfWeek, category, account, or description; aggregation sum or count; a matching total/count sort; and optional limit. Description grouping returns exact ledger text and never assumes free-text variants are the same item. Put literal category labels in filter.categories. Only use filter.descriptions when the user has supplied an exact description; do not invent or normalize descriptions. The tool performs all filtering, grouping, aggregation, sorting, and calculations—never derive those values from getExpenses rows yourself. Use getExpenses only when the user needs individual transaction-level detail. Use compareSpendingPeriods for explicitly ordered period totals, comparisons, increases/decreases, differences, or percentages. For category- or exact-description-filtered period comparison, call compareSpendingPeriods once with the filter and requested periods; it deterministically returns filtered totals and sequential comparisons. Never call an unfiltered comparison after a category-filtered request or any other filtered request. Preserve the user's requested period order; for a sequence of months compare adjacent calendar transitions only (for example August → September → October), never every pair. The date context above resolves relative terms such as last month and this month.",
+          + "\n\nWhen a user asks about a broad spending concept, select one or more relevant existing categories from this vocabulary. Never invent a category. Use literal workbook labels in tool categories. If the user's wording exactly matches a category, prefer it. Include multiple categories only when they are directly relevant; do not include loosely associated categories.\n\nCash is a payment-method/account filter, not an expense category. For requests about cash spending, use paymentMethod: 'cash'. This includes owner-prefixed cash accounts such as Pratheek Cash and Arya Cash; never reject a cash request because 'Cash' is absent from the expense-category list.\n\nUse analyzeExpenses for any grouped, ranked, top-N, weekday, category, account, monthly progression, repeated-item, total, or other aggregated spending question. It accepts only a closed data specification: filters; groupBy month, dayOfWeek, category, account, or description; aggregation sum or count; a matching total/count sort; optional limit; and averageMonthly for a deterministic monthly average. Put literal category labels in filter.categories and exclusions in filter.excludeCategories. For “average monthly” or “based on months already passed”, make one analyzeExpenses call with groupBy month, aggregation sum, averageMonthly true, the exact elapsed-financial-year months supplied in the date context, and every requested exclusion. The tool returns the average; never make separate overall and excluded-category calls or calculate the average yourself. For an additive follow-up such as “exclude electronic items as well”, retain the earlier analysis shape and exclusions, add the requested exclusion, and again use groupBy month with averageMonthly true. Description grouping returns exact ledger text and never assumes free-text variants are the same item. Only use filter.descriptions when the user has supplied an exact description; do not invent or normalize descriptions. The tool performs all filtering, grouping, aggregation, sorting, and calculations—never derive those values from getExpenses rows yourself. Use getExpenses only when the user needs individual transaction-level detail. Use compareSpendingPeriods for explicitly ordered period totals, comparisons, increases/decreases, differences, or percentages. For category- or exact-description-filtered period comparison, call compareSpendingPeriods once with the filter and requested periods; it deterministically returns filtered totals and sequential comparisons. Never call an unfiltered comparison after a category-filtered request or any other filtered request. Preserve the user's requested period order; for a sequence of months compare adjacent calendar transitions only (for example August → September → October), never every pair. The date context above resolves relative terms such as last month and this month.",
       ),
       ...conversationHistory.flatMap((turn) => [
         new HumanMessage(turn.query),
@@ -212,18 +212,21 @@ function summarizeToolArguments(argumentsValue: unknown): string {
   if (!isRecord(argumentsValue)) {
     return "invalid";
   }
-  const safeArguments: Record<string, string | string[]> = {};
+  const safeArguments: Record<string, string | string[] | boolean> = {};
   for (const key of ["category", "month", "date", "paymentMethod", "groupBy", "aggregation", "limit"]) {
     const value = argumentsValue[key];
     if (typeof value === "string") {
       safeArguments[key] = summarizeToolArgumentText(value);
     }
   }
-  for (const key of ["categories", "months"]) {
+  for (const key of ["categories", "excludeCategories", "months"]) {
     const value = argumentsValue[key];
     if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
       safeArguments[key] = value.slice(0, 20).map(summarizeToolArgumentText);
     }
+  }
+  if (typeof argumentsValue.averageMonthly === "boolean") {
+    safeArguments.averageMonthly = argumentsValue.averageMonthly;
   }
   const periods = argumentsValue.periods;
   if (Array.isArray(periods)) {
@@ -298,22 +301,52 @@ function validateExpenseToolCategories(
   const categories = Array.isArray(categoryContainer.categories)
     ? categoryContainer.categories
     : typeof categoryContainer.category === "string" ? [categoryContainer.category] : undefined;
-  if (!categories || !categories.every((category) => typeof category === "string")) {
+  const excludeCategories = Array.isArray(categoryContainer.excludeCategories)
+    ? categoryContainer.excludeCategories
+    : undefined;
+  if ((!categories && !excludeCategories)
+    || (categories && !categories.every((category) => typeof category === "string"))
+    || (excludeCategories && !excludeCategories.every((category) => typeof category === "string"))) {
     return { args: argumentsValue };
   }
 
-  const selection = resolveExpenseCategories(categories, knownCategories);
-  if (selection.categories.length === 0) {
+  const selection = categories ? resolveExpenseCategories(categories, knownCategories) : undefined;
+  const exclusionSelection = excludeCategories
+    ? resolveExpenseCategories(excludeCategories, knownCategories)
+    : undefined;
+  if ((selection && selection.categories.length === 0) || (exclusionSelection && exclusionSelection.categories.length === 0)) {
+    const unknownCategories = [
+      ...(selection?.unknownCategories ?? []),
+      ...(exclusionSelection?.unknownCategories ?? []),
+    ];
     return {
       args: argumentsValue,
-      error: `No requested categories exist in the current workbook vocabulary. Unknown categories: ${selection.unknownCategories.join(", ")}.`,
+      error: `No requested categories exist in the current workbook vocabulary. Unknown categories: ${unknownCategories.join(", ")}.`,
     };
   }
 
-  const { category: _deprecatedCategory, categories: _categories, ...otherArguments } = categoryContainer;
+  const {
+    category: _deprecatedCategory,
+    categories: _categories,
+    excludeCategories: _excludeCategories,
+    ...otherArguments
+  } = categoryContainer;
+  const normalizedCategories = selection?.categories;
+  const normalizedExclusions = exclusionSelection?.categories;
   const args = categoriesAreNested
-    ? { ...argumentsValue, filter: { ...otherArguments, categories: selection.categories } }
-    : { ...otherArguments, categories: selection.categories };
+    ? {
+      ...argumentsValue,
+      filter: {
+        ...otherArguments,
+        ...(normalizedCategories ? { categories: normalizedCategories } : {}),
+        ...(normalizedExclusions ? { excludeCategories: normalizedExclusions } : {}),
+      },
+    }
+    : {
+      ...otherArguments,
+      ...(normalizedCategories ? { categories: normalizedCategories } : {}),
+      ...(normalizedExclusions ? { excludeCategories: normalizedExclusions } : {}),
+    };
   return {
     args,
   };

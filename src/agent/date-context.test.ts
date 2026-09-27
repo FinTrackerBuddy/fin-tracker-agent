@@ -10,6 +10,7 @@ test("resolves September as this month in Asia/Kolkata", () => {
   assert.equal(context.currentCalendarMonth, "September");
   assert.equal(context.currentYear, 2026);
   assert.equal(context.currentWorkbookMonthTab, "September");
+  assert.deepEqual(context.financialYearMonthsElapsed, ["April", "May", "June", "July", "August", "September"]);
 });
 
 test("resolves January and its preceding December using calendar order", () => {
@@ -20,6 +21,7 @@ test("resolves January and its preceding December using calendar order", () => {
   assert.equal(context.previousCalendarMonth, "December");
   assert.equal(context.previousYear, 2026);
   assert.equal(context.previousWorkbookMonthTab, "December");
+  assert.deepEqual(context.financialYearMonthsElapsed, ["April", "May", "June", "July", "August", "September", "October", "November", "December", "January"]);
 });
 
 test("uses March as April's last month despite April–March workbook ordering", () => {

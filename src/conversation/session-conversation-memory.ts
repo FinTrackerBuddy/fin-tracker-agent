@@ -15,7 +15,7 @@ export interface InMemorySessionConversationMemoryOptions {
 }
 
 const DEFAULT_MAX_SESSIONS = 100;
-const DEFAULT_MAX_TURNS_PER_SESSION = 6;
+const DEFAULT_MAX_TURNS_PER_SESSION = 10;
 const DEFAULT_MAX_CHARACTERS_PER_TURN_FIELD = 600;
 
 /**
@@ -35,10 +35,7 @@ export class InMemorySessionConversationMemory implements SessionConversationMem
     this.maxCharactersPerTurnField = options.maxCharactersPerTurnField ?? DEFAULT_MAX_CHARACTERS_PER_TURN_FIELD;
   }
 
-  public getRelevantHistory(conversationId: string, query: string): readonly ConversationTurn[] {
-    if (!isFollowUp(query)) {
-      return [];
-    }
+  public getRelevantHistory(conversationId: string, _query: string): readonly ConversationTurn[] {
     return this.sessions.get(conversationId) ?? [];
   }
 
@@ -59,13 +56,6 @@ export class InMemorySessionConversationMemory implements SessionConversationMem
       this.sessions.delete(oldestConversationId);
     }
   }
-}
-
-function isFollowUp(query: string): boolean {
-  const normalized = query.trim().toLowerCase();
-  return /\b(it|that|there|them|those|same\s+(?:category|month|period|account)|previous\s+(?:one|category|month|period)|above)\b/.test(normalized)
-    || /^(?:and|but|also)\b/.test(normalized)
-    || /^(?:what|how)\s+about\b/.test(normalized);
 }
 
 function truncate(value: string, maximumCharacters: number): string {

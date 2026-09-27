@@ -29,6 +29,8 @@ export interface FinanceDateContext {
   previousCalendarMonth: WorkbookMonthTab;
   previousYear: number;
   previousWorkbookMonthTab: WorkbookMonthTab;
+  /** April through the current calendar month, inclusive. */
+  financialYearMonthsElapsed: WorkbookMonthTab[];
 }
 
 export const systemClock: Clock = {
@@ -76,6 +78,7 @@ export function getFinanceDateContext(
     previousCalendarMonth,
     previousYear,
     previousWorkbookMonthTab: previousCalendarMonth,
+    financialYearMonthsElapsed: financialYearMonthsElapsed(month),
   };
 }
 
@@ -90,11 +93,24 @@ export function formatFinanceDateContext(context: FinanceDateContext): string {
     `Previous calendar month: ${context.previousCalendarMonth}`,
     `Previous year: ${context.previousYear}`,
     `Previous workbook month tab: ${context.previousWorkbookMonthTab}`,
+    `Months elapsed in the workbook financial year, including the current month: ${context.financialYearMonthsElapsed.join(", ")}`,
     'Interpret "this month" as the current workbook month tab above.',
     'Interpret "last month" as the previous workbook month tab above.',
     "Month names in tool calls must be actual workbook month tabs.",
     "The workbook's April–March financial-year ordering must not change calendar-relative dates.",
   ].join("\n");
+}
+
+function financialYearMonthsElapsed(currentMonth: WorkbookMonthTab): WorkbookMonthTab[] {
+  const financialYearMonths: WorkbookMonthTab[] = [
+    "April", "May", "June", "July", "August", "September",
+    "October", "November", "December", "January", "February", "March",
+  ];
+  const currentIndex = financialYearMonths.indexOf(currentMonth);
+  if (currentIndex < 0) {
+    throw new Error("Unable to resolve the current workbook financial-year month.");
+  }
+  return financialYearMonths.slice(0, currentIndex + 1);
 }
 
 function requiredDatePart(

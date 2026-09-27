@@ -151,3 +151,44 @@ test("uses Debit summary for category/month sum analysis without reading transac
     results: [{ key: "August", total: 100 }, { key: "September", total: 150 }],
   });
 });
+
+test("calculates an excluded-category average across specified months from Debit summary in one read", async () => {
+  let summaryReads = 0;
+  const summarySource: ExpenseDataSource = {
+    monthTabs: ["April", "May", "June"],
+    async listExpenses() { throw new Error("ledger should not be read"); },
+    async listDebitSummary() {
+      summaryReads += 1;
+      return [
+        { category: "Groceries", month: "April", amount: 100 },
+        { category: "Home loan", month: "April", amount: 900 },
+        { category: "Groceries", month: "May", amount: 200 },
+        { category: "Investments", month: "May", amount: 800 },
+        { category: "Groceries", month: "June", amount: 300 },
+        { category: "Transfer sent", month: "June", amount: 700 },
+      ];
+    },
+  };
+  const result = await analyzeExpenses({
+    filter: {
+      months: ["April", "May", "June"],
+      excludeCategories: ["home LOAN", "investments", "transfer sent"],
+    },
+    groupBy: "month",
+    aggregation: "sum",
+    averageMonthly: true,
+  }, summarySource);
+
+  assert.equal(summaryReads, 1);
+  assert.deepEqual(result, {
+    filter: {
+      months: ["April", "May", "June"],
+      excludeCategories: ["Home loan", "Investments", "Transfer sent"],
+    },
+    groupBy: "month",
+    aggregation: "sum",
+    results: [{ key: "April", total: 100 }, { key: "June", total: 300 }, { key: "May", total: 200 }],
+    averageMonthly: { total: 600, monthCount: 3, average: 200 },
+  });
+  await assert.rejects(analyzeExpenses({ aggregation: "sum", averageMonthly: true }, summarySource), /requires groupBy month/);
+});

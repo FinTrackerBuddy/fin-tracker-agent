@@ -113,6 +113,38 @@ test("POST /api/query carries bounded relevant context within a caller-provided 
   ]);
 });
 
+test("POST /api/query carries context for an additive 'as well' follow-up", async () => {
+  const histories: Array<readonly { query: string; response: string }[] | undefined> = [];
+  await withServer({
+    async respond(query, _queryId, conversationHistory) {
+      histories.push(conversationHistory);
+      return { text: query.startsWith("Exclude")
+        ? "Updated average excluding electronic items."
+        : "Average excluding the requested categories." };
+    },
+  }, async (baseUrl) => {
+    for (const query of [
+      "What is my average monthly expense excluding home loan?",
+      "Exclude electronic items as well",
+    ]) {
+      const response = await fetch(`${baseUrl}/api/query`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authorizationHeader },
+        body: JSON.stringify({ query, conversationId: "monthly-average" }),
+      });
+      assert.equal(response.status, 200);
+    }
+  });
+
+  assert.deepEqual(histories, [
+    [],
+    [{
+      query: "What is my average monthly expense excluding home loan?",
+      response: "Average excluding the requested categories.",
+    }],
+  ]);
+});
+
 test("POST /api/query rejects an invalid conversationId without agent execution", async () => {
   let invoked = false;
   await withServer({ async respond() { invoked = true; return { text: "unused" }; } }, async (baseUrl) => {

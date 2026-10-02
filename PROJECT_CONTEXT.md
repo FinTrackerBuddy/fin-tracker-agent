@@ -29,7 +29,7 @@ ExpenseDataSource
 Debit summary for category/month totals; monthly ledgers for transaction detail
 ```
 
-`FinanceAgent` supplies date/category context plus bounded relevant session turns, selects and executes tools, and turns structured results into a natural-language answer. The provider layer owns LangChain OpenAI/Gemini construction. Tools own deterministic validation, retrieval, and financial calculation; they do not construct LLM prompts. Category/month monetary sums use the formula-backed `Debit summary`; individual transaction questions still read monthly ledgers. Google OAuth, Sheets API access, summary/ledger parsing, and expense normalization are isolated under `src/google-sheets/`.
+`FinanceAgent` supplies date/category context plus bounded relevant session turns, selects and executes tools, and turns structured results into a natural-language answer. Its editable behavioral instructions live in root `SKILLS.md`; a current-month comparison against the prior N months must keep every month as a separate chronological period, never an aggregate prior-period baseline. It answers the user’s request directly without unsolicited invitations, suggested next analyses, or follow-up questions. The provider layer owns LangChain OpenAI/Gemini construction. Tools own deterministic validation, retrieval, and financial calculation; they do not construct LLM prompts. Category/month monetary sums use the formula-backed `Debit summary`; individual transaction questions still read monthly ledgers. Google OAuth, Sheets API access, summary/ledger parsing, and expense normalization are isolated under `src/google-sheets/`.
 
 ## 4. Repository structure
 

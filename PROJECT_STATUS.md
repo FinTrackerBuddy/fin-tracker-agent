@@ -6,6 +6,8 @@ Phase 3B — Item-level expense analysis (COMPLETE; Phase 3C remains next when e
 
 ## Completed work
 
+- Added repository-managed `SKILLS.md` as the FinanceAgent's editable model-instruction source. It explicitly requires “this month compared to the previous N months” to use separate chronological single-month periods, preventing an aggregate of the N earlier months from being presented as the comparison baseline.
+- FinanceAgent now answers only the requested financial question and is instructed not to append unsolicited invitations, breakdown offers, suggested next analyses, or follow-up questions.
 - Session context no longer depends on hard-coded follow-up words such as “as well”. Every valid `conversationId` supplies its ten most recent bounded query/final-answer pairs to the agent, allowing arbitrary continuations to use prior context. The agent guidance retains the earlier monthly-average shape and exclusions when applying additive changes.
 - Extended generic `analyzeExpenses` with literal `excludeCategories` and deterministic `averageMonthly` output for month-grouped sums. An average-over-months query now supplies the exact months, exclusions, and `averageMonthly: true` in one call; the summary-backed tool computes both excluded totals and the average, never the LLM.
 - HTTP terminal logs now include `durationMs`, measured from receipt through authentication, body parsing, agent work, and response construction. Successful requests include it on `Request completed`; rejected and failed requests include the same end-to-end measurement on their terminal event.

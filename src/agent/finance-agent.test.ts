@@ -150,6 +150,7 @@ test("supplies bounded session history before the current follow-up", async () =
   assert.equal(calls[0]?.[1]?.content.toString(), "How much did I spend on groceries in August?");
   assert.equal(calls[0]?.[2]?.content.toString(), "You spent ₹500 on groceries in August.");
   assert.equal(calls[0]?.[3]?.content.toString(), "How much was it in September?");
+  assert.match(calls[0]?.[0]?.content.toString() ?? "", /Do not append invitations to explore more categories/);
 });
 
 test("executes getExpenses and uses its result to produce the final response", async () => {
@@ -372,6 +373,67 @@ test("uses one category-filtered comparison call for last-two-month outside-food
     { label: "July", months: ["July"], total: 300 },
     { label: "August", months: ["August"], total: 500 },
   ]);
+});
+
+test("keeps each of the previous three months separate when comparing current outside-food spending", async () => {
+  const calls: BaseMessage[][] = [];
+  const comparisonInvocations: unknown[] = [];
+  const agent = new FinanceAgent({
+    async sendMessagesWithTools(messages): Promise<AIMessage> {
+      calls.push(messages);
+      if (calls.length === 1) {
+        return new AIMessage({
+          content: "",
+          tool_calls: [{
+            id: "outside-food-last-three-1",
+            name: "compareSpendingPeriods",
+            args: {
+              categories: ["Dining out", "Food order"],
+              periods: [
+                { label: "July", months: ["July"] },
+                { label: "August", months: ["August"] },
+                { label: "September", months: ["September"] },
+                { label: "October", months: ["October"] },
+              ],
+            },
+          }],
+        });
+      }
+      return new AIMessage("You spent ₹327 in October; July, August, and September are reported separately.");
+    },
+  }, undefined, {
+    now: () => new Date("2026-10-02T12:00:00.000Z"),
+  }, expenseCategoryVocabulary, undefined, {
+    name: "compareSpendingPeriods",
+    async invoke(input: unknown) {
+      comparisonInvocations.push(input);
+      return {
+        categories: ["Dining out", "Food order"],
+        total: 19331.49,
+        periods: [
+          { label: "July", months: ["July"], total: 6000 },
+          { label: "August", months: ["August"], total: 7004.49 },
+          { label: "September", months: ["September"], total: 6000 },
+          { label: "October", months: ["October"], total: 327 },
+        ],
+        comparisons: [],
+      };
+    },
+  } as unknown as StructuredToolInterface);
+
+  await agent.respond("How much I spent in outside food this month compared to last 3 months?");
+
+  assert.deepEqual(comparisonInvocations, [{
+    categories: ["Dining out", "Food order"],
+    periods: [
+      { label: "July", months: ["July"] },
+      { label: "August", months: ["August"] },
+      { label: "September", months: ["September"] },
+      { label: "October", months: ["October"] },
+    ],
+  }]);
+  assert.match(calls[0]?.[0]?.content.toString() ?? "", /do \*\*not\*\* create one\nperiod that bundles those N earlier months/i);
+  assert.match(calls[0]?.[0]?.content.toString() ?? "", /July, August, September, and October as four separate\nperiods/i);
 });
 
 test("logs the real LLM and getExpenses tool lifecycle using summaries", async () => {

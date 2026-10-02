@@ -1,3 +1,8 @@
+---
+name: finance-agent
+description: Deterministic expense-analysis tool selection and response rules.
+---
+
 # Finance Agent Skills
 
 This file contains the editable behavioral instructions sent to the finance

@@ -1,5 +1,5 @@
 import type { ToolCapableLlm } from "../llm/llm-service.js";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
   AIMessage,
@@ -99,8 +99,15 @@ export class FinanceAgent {
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const llmStartedAt = performance.now();
+      const attemptNumber = attempt + 1;
+      logger.info("LLM", "Request prepared", {
+        attempt: attemptNumber,
+        messageCount: messages.length,
+        messageTrace: summarizeMessages(messages),
+        availableTools: tools.map((candidate) => candidate.name),
+      });
       logger.info("LLM", "Invoking model", {
-        attempt: attempt + 1,
+        attempt: attemptNumber,
         debugQuery: summarizeQuery(userMessage),
       });
       let response;
@@ -108,7 +115,7 @@ export class FinanceAgent {
         response = await this.llm.sendMessagesWithTools(messages, tools);
       } catch (error) {
         logger.error("Error", "LLM invocation failed", {
-          attempt: attempt + 1,
+          attempt: attemptNumber,
           durationMs: elapsedMilliseconds(llmStartedAt),
           errorType: getErrorType(error),
           errorMessage: summarizeError(error),
@@ -116,11 +123,19 @@ export class FinanceAgent {
         throw error;
       }
       logger.info("LLM", "Model invocation completed", {
-        attempt: attempt + 1,
+        attempt: attemptNumber,
         durationMs: elapsedMilliseconds(llmStartedAt),
       });
 
       const toolCalls = response.tool_calls ?? [];
+      logger.info("LLM", "Model response received", {
+        attempt: attemptNumber,
+        responseTextCharacters: response.text.length,
+        responseTextSha256: contentSha256(response.text),
+        toolCallCount: toolCalls.length,
+        toolCallTrace: summarizeResponseToolCalls(toolCalls),
+        invalidToolCallCount: response.invalid_tool_calls?.length ?? 0,
+      });
 
       if (toolCalls.length === 0) {
         logger.info("Agent", "Final response generated", { responseCharacters: response.text.length });
@@ -190,7 +205,7 @@ export class FinanceAgent {
       }
     }
 
-    logger.error("Error", "FinanceAgent exceeded tool-call limit");
+    logger.error("Error", "FinanceAgent exceeded tool-call limit", { attemptCount: 3 });
     throw new Error("FinanceAgent exceeded its tool-call limit.");
   }
 }
@@ -206,11 +221,49 @@ function createSystemPrompt(dateContext: string, knownCategories: readonly strin
 
 function loadFinanceAgentSkills(): string {
   const skillsPath = new URL("../../SKILLS.md", import.meta.url);
-  const skills = readFileSync(skillsPath, "utf8").trim();
+  const skills = stripSkillsFrontmatter(readFileSync(skillsPath, "utf8"));
   if (!skills) {
     throw new Error("SKILLS.md must contain finance-agent instructions.");
   }
   return skills;
+}
+
+function stripSkillsFrontmatter(contents: string): string {
+  const trimmed = contents.trim();
+  if (!trimmed.startsWith("---\n")) return trimmed;
+
+  const closingDelimiter = trimmed.indexOf("\n---\n", 4);
+  if (closingDelimiter === -1) {
+    throw new Error("SKILLS.md frontmatter must end with a closing --- delimiter.");
+  }
+  return trimmed.slice(closingDelimiter + "\n---\n".length).trim();
+}
+
+/**
+ * Emits the request/response shape without persisting prompt text, raw tool
+ * data, descriptions, or model prose in application logs.
+ */
+function summarizeMessages(messages: readonly BaseMessage[]): string {
+  return messages.map((message) => {
+    const content = messageContentForDiagnostics(message);
+    return `${message.getType()}(characters=${content.length},sha256=${contentSha256(content)})`;
+  }).join(" → ");
+}
+
+function summarizeResponseToolCalls(
+  toolCalls: ReadonlyArray<{ name: string; args: unknown }>,
+): string {
+  return toolCalls.length === 0
+    ? "none"
+    : toolCalls.map((toolCall) => `${toolCall.name}(${summarizeToolArguments(toolCall.args)})`).join(", ");
+}
+
+function messageContentForDiagnostics(message: BaseMessage): string {
+  return typeof message.content === "string" ? message.content : JSON.stringify(message.content);
+}
+
+function contentSha256(content: string): string {
+  return createHash("sha256").update(content).digest("hex");
 }
 
 function elapsedMilliseconds(startedAt: number): number {

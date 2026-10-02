@@ -48,6 +48,23 @@ test("returns a stable user-facing response without a tool call", async () => {
   });
 });
 
+test("loads prompt instructions from SKILLS.md without sending its metadata to the model", async () => {
+  const calls: BaseMessage[][] = [];
+  const agent = new FinanceAgent({
+    async sendMessagesWithTools(messages): Promise<AIMessage> {
+      calls.push(messages);
+      return new AIMessage("Done.");
+    },
+  }, undefined, undefined, expenseCategoryVocabulary);
+
+  await agent.respond("What can you help me with?");
+
+  const systemPrompt = calls[0]?.[0]?.content.toString() ?? "";
+  assert.match(systemPrompt, /When the user asks for this\/current month/);
+  assert.doesNotMatch(systemPrompt, /name: finance-agent/);
+  assert.doesNotMatch(systemPrompt, /description: Deterministic expense-analysis/);
+});
+
 test("logs a redacted LLM failure diagnostic", async () => {
   const logger = new RecordedLogger();
   const agent = new FinanceAgent({
@@ -455,16 +472,19 @@ test("logs the real LLM and getExpenses tool lifecycle using summaries", async (
 
   await agent.respond("How much did I spend on food?", "query-test-id");
 
-  assert.equal(logger.entries.length, 12);
+  assert.equal(logger.entries.length, 16);
   assert.match(logger.entries[0] ?? "", /^Agent:Execution started:.*"queryId":"query-test-id"/);
-  assert.match(logger.entries[3] ?? "", /^LLM:Invoking model:.*"attempt":1.*"queryId":"query-test-id"/);
-  assert.match(logger.entries[4] ?? "", /^LLM:Model invocation completed:.*"durationMs":\d+.*"queryId":"query-test-id"/);
-  assert.match(logger.entries[5] ?? "", /^Tool:Tool call requested:.*"getExpenses".*"queryId":"query-test-id"/);
-  assert.match(logger.entries[6] ?? "", /^Tool:Tool execution started:.*"queryId":"query-test-id"/);
-  assert.match(logger.entries[7] ?? "", /^Tool:Tool execution completed:.*"expenseCount":1.*"total":"₹450".*"durationMs":\d+.*"queryId":"query-test-id"/);
-  assert.match(logger.entries[9] ?? "", /^LLM:Model invocation completed:.*"attempt":2.*"durationMs":\d+.*"queryId":"query-test-id"/);
-  assert.match(logger.entries[11] ?? "", /^Agent:Execution completed:.*"queryId":"query-test-id"/);
-  assert.doesNotMatch(logger.entries.join("\n"), /Groceries/);
+  assert.match(logger.entries[3] ?? "", /^LLM:Request prepared:.*"messageCount":2.*"availableTools".*"queryId":"query-test-id"/);
+  assert.match(logger.entries[4] ?? "", /^LLM:Invoking model:.*"attempt":1.*"queryId":"query-test-id"/);
+  assert.match(logger.entries[5] ?? "", /^LLM:Model invocation completed:.*"durationMs":\d+.*"queryId":"query-test-id"/);
+  assert.match(logger.entries[6] ?? "", /^LLM:Model response received:.*"toolCallCount":1.*getExpenses.*"queryId":"query-test-id"/);
+  assert.match(logger.entries[7] ?? "", /^Tool:Tool call requested:.*"getExpenses".*"queryId":"query-test-id"/);
+  assert.match(logger.entries[8] ?? "", /^Tool:Tool execution started:.*"queryId":"query-test-id"/);
+  assert.match(logger.entries[9] ?? "", /^Tool:Tool execution completed:.*"expenseCount":1.*"total":"₹450".*"durationMs":\d+.*"queryId":"query-test-id"/);
+  assert.match(logger.entries[10] ?? "", /^LLM:Request prepared:.*"messageCount":4.*"queryId":"query-test-id"/);
+  assert.match(logger.entries[13] ?? "", /^LLM:Model response received:.*"toolCallCount":0.*"queryId":"query-test-id"/);
+  assert.match(logger.entries[15] ?? "", /^Agent:Execution completed:.*"queryId":"query-test-id"/);
+  assert.doesNotMatch(logger.entries.join("\n"), /Groceries|You spent 450 on food/);
 });
 
 test("supplies authoritative current and previous workbook month context to the model", async () => {

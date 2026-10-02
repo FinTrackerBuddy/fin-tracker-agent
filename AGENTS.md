@@ -13,29 +13,32 @@ PROJECT_SPEC.md
     ↓ What we are building
 PROJECT_STATUS.md
     ↓ Current operational/project state for Codex
-PROJECT_CONTEXT.md
-    ↓ Portable project context for future ChatGPT conversations
+WORKBOOK_DATA_MAP.md
+    ↓ Observed financial-data schema and limitations
 ```
 
 - `PROJECT_SPEC.md` describes product vision, requirements, architecture principles, intended capabilities, and the roadmap. Change it when product scope, intended behavior, or architectural direction changes.
 - `PROJECT_STATUS.md` is the operational state document for Codex: completed work, implementation state, verification, configuration/architecture notes, current phase, and next implementation work. Read it before substantial work.
-- `PROJECT_CONTEXT.md` is a concise, portable handoff for a fresh ChatGPT conversation. It summarizes the context, architecture, decisions, capabilities, roadmap, and current state needed to continue intelligently; it is not a detailed implementation log.
+- `WORKBOOK_DATA_MAP.md` records the observed workbook schema, formulas, relationships, and data limitations. Update it only when new inspection changes those observations.
 - `AGENTS.md` contains the project-wide working instructions and conventions Codex must follow.
 
 Whenever Codex implements a new feature, capability, architectural change, meaningful behavior change, or major bug fix, update documentation as part of that same task:
 
 1. Update `PROJECT_STATUS.md` whenever implementation state changes.
-2. Review `PROJECT_CONTEXT.md` and update it whenever the change matters to a future ChatGPT handoff.
-3. Update `PROJECT_SPEC.md` when requirements, intended behavior, architecture direction, or roadmap changes.
+2. Update `PROJECT_SPEC.md` when requirements, intended behavior, architecture direction, or roadmap changes.
+3. Update `WORKBOOK_DATA_MAP.md` when workbook observations change.
 4. Do not churn documents for trivial/internal changes that do not affect project understanding.
 
-`PROJECT_STATUS.md` and `PROJECT_CONTEXT.md` must both remain current as meaningful work progresses; future feature prompts should not need to restate this rule.
+`PROJECT_STATUS.md` must remain current as meaningful work progresses; future feature prompts should not need to restate this rule.
 
 ## Current roadmap
 
 - **Phase 1 — Foundation + Basic Expense Agent — COMPLETE**
 - **Phase 2 — Deterministic Financial Analysis — COMPLETE**
-- **Phase 3 — Conversation Context, Item-Level Analysis & Semantic Memory — NEXT (when explicitly prioritized)**
+- **Phase 3A — Session-level conversation memory — COMPLETE**
+- **Phase 3B — Item-level expense analysis — COMPLETE**
+- **Phase 3C — Persistent semantic memory — PAUSED**
+- **Phase 3D — Portable Finance MCP Server & Skill Packaging — NEXT**
 - **Phase 4 — Advanced Agent Architecture — FUTURE**
 
 Phase 3 has three distinct concerns that must remain separate:
@@ -45,6 +48,8 @@ Phase 3 has three distinct concerns that must remain separate:
 3. Persistent user-specific semantic memory using embeddings and a vector database, including retrieval, LLM-context injection, and lifecycle/cleanup.
 
 Transaction descriptions are financial data, not semantic user memories. Do not automatically embed or persist them in a vector store, or turn them into user facts/preferences. Do not implement any Phase 3 concern during Phase 2. Do not add embeddings, a vector database, RAG, PostgreSQL, LangGraph, specialized agents, or background/scheduled workflows unless the current task and project phase explicitly require them.
+
+Phase 3D makes the deterministic finance capabilities portable across agent harnesses. It must add a read-only Finance MCP server as a transport adapter over the existing TypeScript domain logic, plus a reusable standard `SKILL.md` that tells an agent when and how to use the MCP tools. Keep the existing Google Sheets REST OAuth layer behind the Finance MCP server; Google's preview Sheets MCP server is out of scope. Do not duplicate calculations, expose arbitrary Sheet-range access, or let an LLM calculate financial values from returned transactions.
 
 ## Architecture rules
 
@@ -68,7 +73,7 @@ Transaction descriptions are financial data, not semantic user memories. Do not 
 - `src/agent/date-context.ts` is the sole relative-date authority. It uses `Asia/Kolkata`; calendar-relative months and calendar adjacency are not determined by April–March display order.
 - For period comparison, preserve caller order and compare only sequential periods. A zero baseline yields `percentageChange: null`, never `Infinity` or `NaN`.
 - `analyzeExpenses` is the generic analysis boundary, including month-by-month progression. Its closed specification supports only workbook-backed filters (months, ISO date/range, categories, accounts, cash), grouping by month/day of week/category/account, `sum` or `count`, matching aggregate sorting, and a bounded limit. Do not add a specialized tool for each new grouping question.
-- Item-level description analysis is planned Phase 3 work, not a current `analyzeExpenses` feature. When prioritized, extend the generic deterministic analysis model where appropriate rather than adding one tool per food/item/frequency/trend question. The LLM may choose a bounded operation but must not calculate totals from raw transactions. Any description normalization or entity grouping must be explicitly designed, tested, and report uncertainty; free-text variations must not be silently treated as the same item.
+- Phase 3B item-level analysis is complete: `analyzeExpenses` supports exact-description filtering/grouping and `compareSpendingPeriods` supports exact-description filters. Description normalization or entity grouping remains deferred and must be explicitly designed, tested, and uncertainty-aware; free-text variations must not be silently treated as the same item.
 - Workbook category vocabulary is retrieved dynamically from current debit expense data. Do not hard-code semantic category mappings where this vocabulary can be used.
 - Preserve the `queryId` through HTTP, agent, LLM, tools, and Sheets-related logs. Preserve duration logging for LLM and tool execution when modifying those paths.
 

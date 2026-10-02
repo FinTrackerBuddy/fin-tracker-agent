@@ -81,9 +81,9 @@ Completed deterministic analysis over the financial data already available throu
 
 The generic `analyzeExpenses` capability composes supported filters (month, ISO date/range, category, account, cash), grouping (`month`, `dayOfWeek`, `category`, `account`), `sum`/`count` aggregation, aggregate sorting, and a bounded top-N limit. It deliberately does not support arbitrary expressions, unsupported dimensions, or merchant/description grouping. Stable tools remain for transaction detail, monthly progression, and explicitly ordered period comparison; comparison preserves caller order, adjacent comparisons, category filters, and null zero-baseline percentages.
 
-## Phase 3 — Conversation Context, Item-Level Analysis & Semantic Memory — Next
+## Phase 3 — Conversation Context, Item-Level Analysis & Semantic Memory
 
-Phase 3 has three related but distinct capabilities. They must remain separate from each other and from financial transaction data; they do not need to be implemented as one system.
+Phase 3 has three related but distinct data/context capabilities, plus a separate portability phase. The data/context capabilities must remain separate from each other and from financial transaction data; they do not need to be implemented as one system.
 
 ### Phase 3A — Session-level conversation memory
 
@@ -102,6 +102,8 @@ Transaction descriptions are financial data held behind `ExpenseDataSource`, not
 ### Phase 3C — Persistent semantic user memory
 
 Across sessions, retain intentionally created or updated user-specific facts, preferences, and context. The planned flow is: user information/fact → memory representation → embedding → vector database/vector store → semantic retrieval using the current query → relevant memories supplied to the agent/LLM → LLM relevance assessment. Planned work includes the memory creation/update model, embeddings, vector storage and semantic search, relevant-memory injection into agent reasoning, and memory lifecycle/cleanup.
+
+**Status: paused.** This work is explicitly deferred while the portable Finance MCP server and reusable skill package are prioritized. It must remain separate from financial transaction data when resumed.
 
 Persistent memory must not automatically store every conversation message. The design must apply appropriate privacy and data-boundary rules to distinguish ephemeral session context, persistent user memory, and financial transaction data. Embeddings and vector storage, when introduced, are for intentionally maintained user facts/preferences/context—not an automatic index of financial transactions.
 
@@ -135,6 +137,14 @@ Persistent memory must not automatically store every conversation message. The d
 ```
 
 Persistent semantic memory remains a separate subsystem that may supply relevant intentionally maintained user context to the agent. Neither session memory, item-level analysis, nor persistent semantic memory—including embeddings and a vector database—may be introduced during Phase 2 financial-analysis work.
+
+### Phase 3D — Portable Finance MCP Server & Skill Packaging — Next
+
+Make the existing deterministic expense capabilities reusable by the project's custom agent and compatible external agent harnesses. Create a read-only Finance MCP server as a transport adapter over the tested TypeScript domain logic and a standard reusable `SKILL.md` that describes tool-selection, financial-data, privacy, and response rules.
+
+The Finance MCP server must expose bounded, typed, high-level capabilities equivalent to the existing transaction retrieval, generic expense analysis, and ordered period-comparison tools. It must own validation and invoke the existing deterministic readers/calculations; it must not expose arbitrary Google Sheets ranges or prompt-driven calculations. Google Sheets access remains the existing read-only REST OAuth integration behind this server. The preview Google Sheets MCP server is explicitly out of scope.
+
+The custom agent remains provider-neutral and may use the Finance MCP server as an MCP client. The same server and skill must be usable by supported external harnesses after their local MCP connection and skill-discovery configuration. The skill explains when to call each tool and never replaces the MCP tool schemas, server-side validation, or deterministic calculation implementation.
 
 ## Phase 4 — Advanced Agent Architecture — Future
 

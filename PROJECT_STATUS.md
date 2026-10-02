@@ -2,12 +2,12 @@
 
 ## Current phase
 
-Phase 3D — Portable Finance MCP Server & Skill Packaging (NEXT; Phase 3C persistent semantic memory is paused)
+Phase 3C — Portable Finance MCP Server & Skill Packaging (NEXT; Phase 3D persistent semantic memory remains future work)
 
 ## Completed work
 
 - Removed the redundant `PROJECT_CONTEXT.md`. A fresh agent now relies on `AGENTS.md`, `PROJECT_SPEC.md`, `PROJECT_STATUS.md`, and `WORKBOOK_DATA_MAP.md`; `PROJECT_STATUS.md` is the concise operational handoff.
-- Reprioritized the roadmap: Phase 3C persistent semantic memory is paused, and Phase 3D is now next. Phase 3D will package the existing deterministic finance capabilities as a read-only Finance MCP server and reusable skill without changing financial behavior or adopting Google's preview Sheets MCP server.
+- Renumbered the roadmap: Phase 3C now packages the existing deterministic finance capabilities as a read-only Finance MCP server and reusable skill without changing financial behavior or adopting Google's preview Sheets MCP server. Persistent semantic memory is Phase 3D future work.
 - Updated the repository-managed FinanceAgent instructions so every individual expense or transaction mentioned in a user-facing answer includes its currency amount, even if the user asked only for another attribute.
 - LLM lifecycle diagnostics now record each request's message sequence, content lengths and SHA-256 fingerprints, enabled tool names, and each response's text fingerprint plus safe tool-call trace. Prompt text, model prose, raw tool payloads, financial rows/descriptions, and credentials remain excluded from logs.
 - Added repository-managed `SKILLS.md` as the FinanceAgent's editable model-instruction source. It explicitly requires “this month compared to the previous N months” to use separate chronological single-month periods, preventing an aggregate of the N earlier months from being presented as the comparison baseline.
@@ -97,7 +97,7 @@ Phase 3D — Portable Finance MCP Server & Skill Packaging (NEXT; Phase 3C persi
 
 ## Current/in-progress work
 
-Phase 1, Phase 2, Phase 3A, and Phase 3B are complete. `analyzeExpenses` remains the generic deterministic engine rather than an expanding set of special-purpose analysis tools; it now includes exact-description grouping/filtering while preserving distinct free-text variants. `compareSpendingPeriods` can compare exact-description-filtered totals in caller order. Phase 3A provides bounded process-local conversation context through an optional `conversationId`, preserving the stable `POST /api/query` response `{ "text": "..." }`. Phase 3C persistent semantic user memory is paused. The next work is Phase 3D: a read-only Finance MCP adapter over existing deterministic TypeScript logic, plus a reusable standard skill for the custom agent and compatible external harnesses. Transaction descriptions remain financial data, not automatic semantic-memory input. No persistent memory store, embeddings, vector database, PostgreSQL, or LangGraph has been introduced.
+Phase 1, Phase 2, Phase 3A, and Phase 3B are complete. `analyzeExpenses` remains the generic deterministic engine rather than an expanding set of special-purpose analysis tools; it now includes exact-description grouping/filtering while preserving distinct free-text variants. `compareSpendingPeriods` can compare exact-description-filtered totals in caller order. Phase 3A provides bounded process-local conversation context through an optional `conversationId`, preserving the stable `POST /api/query` response `{ "text": "..." }`. The next work is Phase 3C: a read-only Finance MCP adapter over existing deterministic TypeScript logic, plus a reusable standard skill for the custom agent and compatible external harnesses. Phase 3D persistent semantic memory remains future work. Transaction descriptions remain financial data, not automatic semantic-memory input. No persistent memory store, embeddings, vector database, PostgreSQL, or LangGraph has been introduced.
 
 ## What was tested
 
@@ -128,7 +128,7 @@ Phase 1, Phase 2, Phase 3A, and Phase 3B are complete. `analyzeExpenses` remains
 
 ## Next planned step
 
-Implement Phase 3D — Portable Finance MCP Server & Skill Packaging. First factor the existing deterministic operations behind a transport-independent TypeScript boundary; retain the current LangChain tools as adapters and add read-only, typed Finance MCP wrappers for transaction retrieval, generic expense analysis, and ordered period comparison. Create one standard reusable `SKILL.md` that guides tool selection and preserves financial-data/privacy rules; the custom agent must load it explicitly, while compatible external harnesses can discover it through their skill configuration. Keep Google Sheets REST OAuth inside the Finance MCP service. Do not use Google's preview Sheets MCP server, expose arbitrary Sheet-range access, duplicate calculations, or begin Phase 3C memory work.
+Implement Phase 3C — Portable Finance MCP Server & Skill Packaging. First factor the existing deterministic operations behind a transport-independent TypeScript boundary; retain the current LangChain tools as adapters and add read-only, typed Finance MCP wrappers for transaction retrieval, generic expense analysis, and ordered period comparison. Create one standard reusable `SKILL.md` that guides tool selection and preserves financial-data/privacy rules; the custom agent must load it explicitly, while compatible external harnesses can discover it through their skill configuration. Keep Google Sheets REST OAuth inside the Finance MCP service. Do not use Google's preview Sheets MCP server, expose arbitrary Sheet-range access, duplicate calculations, or begin Phase 3D memory work.
 
 ## Important implementation decisions
 
@@ -163,7 +163,7 @@ Implement Phase 3D — Portable Finance MCP Server & Skill Packaging. First fact
 - The API adapter sends only authenticated `GET` requests with unformatted values and date serials. No write endpoint is present.
 - `getExpenses` preserves its name and result shape (`{ expenses, total }`). It maps `sourceSheet` only internally for month filtering, then returns the original public expense fields: date, category, description, and amount.
 - The category catalog is not a manually maintained mapping, database, RAG index, embedding store, or semantic-search service. It is derived from distinct current debit labels using the reader's trimming plus the tool's existing case-insensitive exact-match rule. The five-minute in-memory cache avoids a full category-vocabulary read on every agent request; the tool remains the authoritative live validation point.
-- Phase 3D is the selected portability boundary. The Finance MCP server will be a thin read-only transport adapter over the existing deterministic TypeScript services, rather than a replacement for them. It will expose high-level finance operations with schemas and server-side validation; it will not expose generic Google Sheets tools. The shared finance skill will express tool-selection and presentation rules, while MCP schemas and TypeScript retain executable behavior. The custom agent remains responsible for provider selection, its tool loop, and session handling. Google's remote Sheets MCP service is Developer Preview and is not part of this plan.
+- Phase 3C is the selected portability boundary. The Finance MCP server will be a thin read-only transport adapter over the existing deterministic TypeScript services, rather than a replacement for them. It will expose high-level finance operations with schemas and server-side validation; it will not expose generic Google Sheets tools. The shared finance skill will express tool-selection and presentation rules, while MCP schemas and TypeScript retain executable behavior. The custom agent remains responsible for provider selection, its tool loop, and session handling. Google's remote Sheets MCP service is Developer Preview and is not part of this plan.
 
 ## Known issues/blockers
 

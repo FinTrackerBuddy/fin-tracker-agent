@@ -37,8 +37,8 @@ Whenever Codex implements a new feature, capability, architectural change, meani
 - **Phase 2 — Deterministic Financial Analysis — COMPLETE**
 - **Phase 3A — Session-level conversation memory — COMPLETE**
 - **Phase 3B — Item-level expense analysis — COMPLETE**
-- **Phase 3C — Persistent semantic memory — PAUSED**
-- **Phase 3D — Portable Finance MCP Server & Skill Packaging — NEXT**
+- **Phase 3C — Portable Finance MCP Server & Skill Packaging — NEXT**
+- **Phase 3D — Persistent semantic memory — FUTURE**
 - **Phase 4 — Advanced Agent Architecture — FUTURE**
 
 Phase 3 has three distinct concerns that must remain separate:
@@ -49,7 +49,7 @@ Phase 3 has three distinct concerns that must remain separate:
 
 Transaction descriptions are financial data, not semantic user memories. Do not automatically embed or persist them in a vector store, or turn them into user facts/preferences. Do not implement any Phase 3 concern during Phase 2. Do not add embeddings, a vector database, RAG, PostgreSQL, LangGraph, specialized agents, or background/scheduled workflows unless the current task and project phase explicitly require them.
 
-Phase 3D makes the deterministic finance capabilities portable across agent harnesses. It must add a read-only Finance MCP server as a transport adapter over the existing TypeScript domain logic, plus a reusable standard `SKILL.md` that tells an agent when and how to use the MCP tools. Keep the existing Google Sheets REST OAuth layer behind the Finance MCP server; Google's preview Sheets MCP server is out of scope. Do not duplicate calculations, expose arbitrary Sheet-range access, or let an LLM calculate financial values from returned transactions.
+Phase 3C makes the deterministic finance capabilities portable across agent harnesses. It must add a read-only Finance MCP server as a transport adapter over the existing TypeScript domain logic, plus a reusable standard `SKILL.md` that tells an agent when and how to use the MCP tools. Keep the existing Google Sheets REST OAuth layer behind the Finance MCP server; Google's preview Sheets MCP server is out of scope. Do not duplicate calculations, expose arbitrary Sheet-range access, or let an LLM calculate financial values from returned transactions.
 
 ## Architecture rules
 

@@ -61,6 +61,7 @@ test("loads prompt instructions from SKILLS.md without sending its metadata to t
 
   const systemPrompt = calls[0]?.[0]?.content.toString() ?? "";
   assert.match(systemPrompt, /When the user asks for this\/current month/);
+  assert.match(systemPrompt, /include its monetary amount in currency/);
   assert.doesNotMatch(systemPrompt, /name: finance-agent/);
   assert.doesNotMatch(systemPrompt, /description: Deterministic expense-analysis/);
 });

@@ -6,6 +6,7 @@ Phase 3B — Item-level expense analysis (COMPLETE; Phase 3C remains next when e
 
 ## Completed work
 
+- Updated the repository-managed FinanceAgent instructions so every individual expense or transaction mentioned in a user-facing answer includes its currency amount, even if the user asked only for another attribute.
 - LLM lifecycle diagnostics now record each request's message sequence, content lengths and SHA-256 fingerprints, enabled tool names, and each response's text fingerprint plus safe tool-call trace. Prompt text, model prose, raw tool payloads, financial rows/descriptions, and credentials remain excluded from logs.
 - Added repository-managed `SKILLS.md` as the FinanceAgent's editable model-instruction source. It explicitly requires “this month compared to the previous N months” to use separate chronological single-month periods, preventing an aggregate of the N earlier months from being presented as the comparison baseline.
 - FinanceAgent now answers only the requested financial question and is instructed not to append unsolicited invitations, breakdown offers, suggested next analyses, or follow-up questions.
